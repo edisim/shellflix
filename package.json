@@ -49,16 +49,19 @@
     "specialist": "^0.3.0",
     "temp": "^0.8.3",
     "torrent-search-api": "^2.0.3",
-    "webtorrent-cli": "git://github.com/fabiospampinato/webtorrent-cli.git#iina-pip"
+    "webtorrent-cli": "git+https://github.com/fabiospampinato/webtorrent-cli.git#iina-pip"
   },
   "devDependencies": {
-    "@types/lodash": "^4.14.118",
     "@types/node": "^10.12.8",
     "rimraf": "^2.6.2",
-    "typescript": "~3.0.3",
+    "typescript": "^3.9.10",
     "typescript-transform-export-interop": "^1.0.1"
   },
   "engines": {
     "node": ">= 6.0.0"
+  },
+  "overrides": {
+    "http-node": "^1.2.0",
+    "@types/lodash": "4.14.100"
   }
 }

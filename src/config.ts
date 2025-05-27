@@ -1,10 +1,9 @@
-
 /* IMPORT */
 
 import * as _ from 'lodash';
 import * as fs from 'fs';
 import * as JSON5 from 'json5';
-import * as localeCode from 'locale-code';
+const localeCode = require('locale-code');
 import * as os from 'os';
 import * as osLocale from 'os-locale';
 import * as path from 'path';
