@@ -1,6 +1,6 @@
 {
   "name": "shellflix",
-  "version": "1.11.4",
+  "version": "1.11.5",
   "description": "A fixed CLIFlix fork for streaming torrents from the terminal.",
   "bin": {
     "shellflix": "dist/src/bin/index.js"
@@ -22,6 +22,7 @@
     "type": "git",
     "url": "git+https://github.com/edisim/shellflix.git"
   },
+  "homepage": "https://github.com/edisim/shellflix#readme",
   "keywords": [
     "watch",
     "stream",

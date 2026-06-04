@@ -118,7 +118,11 @@ const CLIFlix = {
       torrentSearch.disableAllProviders ();
       torrentSearch.enableProvider ( provider );
 
-      const torrents = await torrentSearch.search ( query, category, rows );
+      const torrents = await Utils.promise.timeout (
+        torrentSearch.search ( query, category, rows ),
+        Config.torrents.timeout,
+        `Search via "${provider}" timed out after ${Config.torrents.timeout}ms.`
+      );
 
       spinner.stop ();
 
@@ -158,7 +162,16 @@ const CLIFlix = {
 
       }
 
-      return await Utils.prompt.title ( 'Which torrent?', torrents );
+      const searchAgain = {
+        title: 'Search again...',
+        __shellflixAction: 'search-again'
+      };
+
+      const selected = await Utils.prompt.title ( 'Which torrent?', [ searchAgain, ...torrents ] );
+
+      if ( selected && selected.__shellflixAction === 'search-again' ) continue;
+
+      return selected;
 
     }
 

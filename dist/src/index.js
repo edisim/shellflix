@@ -159,7 +159,7 @@ var CLIFlix = {
                         _a.trys.push([3, 5, , 7]);
                         torrentSearch.disableAllProviders();
                         torrentSearch.enableProvider(provider);
-                        return [4 /*yield*/, torrentSearch.search(query, category, rows)];
+                        return [4 /*yield*/, utils_1.default.promise.timeout(torrentSearch.search(query, category, rows), config_1.default.torrents.timeout, "Search via \"" + provider + "\" timed out after " + config_1.default.torrents.timeout + "ms.")];
                     case 4:
                         torrents = _a.sent();
                         spinner.stop();
@@ -182,7 +182,7 @@ var CLIFlix = {
     },
     getTorrent: function () {
         return __awaiter(this, void 0, void 0, function () {
-            var query, torrents;
+            var query, torrents, searchAgain, selected;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -197,8 +197,16 @@ var CLIFlix = {
                             console.error(specialist_1.color.yellow("No torrents found for \"" + specialist_1.color.bold(query) + "\", try another query."));
                             return [3 /*break*/, 0];
                         }
-                        return [4 /*yield*/, utils_1.default.prompt.title('Which torrent?', torrents)];
-                    case 3: return [2 /*return*/, _a.sent()];
+                        searchAgain = {
+                            title: 'Search again...',
+                            __shellflixAction: 'search-again'
+                        };
+                        return [4 /*yield*/, utils_1.default.prompt.title('Which torrent?', [searchAgain].concat(torrents))];
+                    case 3:
+                        selected = _a.sent();
+                        if (selected && selected.__shellflixAction === 'search-again')
+                            return [3 /*break*/, 0];
+                        return [2 /*return*/, selected];
                     case 4: return [2 /*return*/];
                 }
             });

@@ -4,6 +4,8 @@ A fixed CLIFlix fork for streaming torrents from the terminal.
 
 It searches a torrent for you and streams it using a patched WebTorrent CLI to your favorite app. It supports subtitles too.
 
+[npm package](https://www.npmjs.com/package/shellflix) | [GitHub fork](https://github.com/edisim/shellflix)
+
 > **Warning**: If you don't know what a torrent is, or are unsure about the legality of the torrents you're downloading you shouldn't use `shellflix`.
 
 ## Install

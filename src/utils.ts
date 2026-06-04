@@ -43,10 +43,10 @@ const Utils = {
 
       /* CHECKS */
 
-      const hasSeeders = titles[0] && _.isNumber ( titles[0].seeds ),
-            hasLeechers = titles[0] && _.isNumber ( titles[0].peers ),
-            hasSize = titles[0] && _.isString ( titles[0].size ),
-            hasTime = titles[0] && _.isString ( titles[0].time );
+      const hasSeeders = titles.some ( title => _.isNumber ( title.seeds ) ),
+            hasLeechers = titles.some ( title => _.isNumber ( title.peers ) ),
+            hasSize = titles.some ( title => _.isString ( title.size ) ),
+            hasTime = titles.some ( title => _.isString ( title.time ) );
 
       /* TABLE */
 
@@ -58,10 +58,10 @@ const Utils = {
 
         row.push ( Utils.torrent.parseTitle ( title.title ) );
 
-        if ( Config.torrents.details.seeders && hasSeeders ) row.push ( title.seeds );
-        if ( Config.torrents.details.leechers && hasLeechers ) row.push ( title.peers );
-        if ( Config.torrents.details.size && hasSize ) row.push ( Utils.torrent.parseSize ( title.size ) );
-        if ( Config.torrents.details.time && hasTime ) row.push ( title.time );
+        if ( Config.torrents.details.seeders && hasSeeders ) row.push ( _.isNumber ( title.seeds ) ? title.seeds : '' );
+        if ( Config.torrents.details.leechers && hasLeechers ) row.push ( _.isNumber ( title.peers ) ? title.peers : '' );
+        if ( Config.torrents.details.size && hasSize ) row.push ( _.isString ( title.size ) ? Utils.torrent.parseSize ( title.size ) : '' );
+        if ( Config.torrents.details.time && hasTime ) row.push ( _.isString ( title.time ) ? title.time : '' );
 
         table.push ( row );
 
@@ -112,7 +112,7 @@ const Utils = {
 
     parseTitle ( title ) {
 
-      return title.replace ( /\d+(\.\d+)? ?[k|m|g|t]b/gi, '' ) // Size info
+      return String ( title ).replace ( /\d+(\.\d+)? ?[k|m|g|t]b/gi, '' ) // Size info
                   .replace ( /\s\s+/g, ' ' ) // Multiple spaces
                   .replace ( /- -/g, '-' ) // Empty blocks between dashes
                   .replace ( /\s*-$/, '' ); // Ending dash
@@ -147,13 +147,59 @@ const Utils = {
 
     async download ({ url, filename }) {
 
-      const content = await request ( url ),
-            stream = Config.downloads.save ? fs.createWriteStream ( path.join ( Config.downloads.path, filename ) ) : temp.createWriteStream ();
+      const content = await request ( encodeURI ( url ) ),
+            filepath = path.join ( Config.downloads.path, Utils.subtitles.sanitizeFilename ( filename ) );
+
+      if ( Config.downloads.save ) Utils.fs.ensureDir ( path.dirname ( filepath ) );
+
+      const stream = Config.downloads.save ? fs.createWriteStream ( filepath ) : temp.createWriteStream ();
 
       stream.write ( content );
       stream.end ();
 
       return stream;
+
+    },
+
+    sanitizeFilename ( filename ) {
+
+      return path.basename ( String ( filename ) ).replace ( /[\\/:*?"<>|\x00-\x1F]/g, '_' );
+
+    }
+
+  },
+
+  fs: {
+
+    ensureDir ( dir ) {
+
+      if ( fs.existsSync ( dir ) ) return;
+
+      Utils.fs.ensureDir ( path.dirname ( dir ) );
+      fs.mkdirSync ( dir );
+
+    }
+
+  },
+
+  promise: {
+
+    timeout ( promise, ms, message ) {
+
+      if ( !ms || ms <= 0 ) return promise;
+
+      let timer;
+      const timeout = new Promise ( ( resolve, reject ) => {
+        timer = setTimeout ( () => reject ( new Error ( message ) ), ms );
+      });
+
+      return Promise.race ([ promise, timeout ]).then ( result => {
+        clearTimeout ( timer );
+        return result;
+      }, error => {
+        clearTimeout ( timer );
+        throw error;
+      });
 
     }
 

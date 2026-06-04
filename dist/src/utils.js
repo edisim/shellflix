@@ -81,19 +81,19 @@ var Utils = {
                 return __generator(this, function (_a) {
                     switch (_a.label) {
                         case 0:
-                            hasSeeders = titles[0] && _.isNumber(titles[0].seeds), hasLeechers = titles[0] && _.isNumber(titles[0].peers), hasSize = titles[0] && _.isString(titles[0].size), hasTime = titles[0] && _.isString(titles[0].time);
+                            hasSeeders = titles.some(function (title) { return _.isNumber(title.seeds); }), hasLeechers = titles.some(function (title) { return _.isNumber(title.peers); }), hasSize = titles.some(function (title) { return _.isString(title.size); }), hasTime = titles.some(function (title) { return _.isString(title.time); });
                             table = [];
                             titles.forEach(function (title) {
                                 var row = [];
                                 row.push(Utils.torrent.parseTitle(title.title));
                                 if (config_1.default.torrents.details.seeders && hasSeeders)
-                                    row.push(title.seeds);
+                                    row.push(_.isNumber(title.seeds) ? title.seeds : '');
                                 if (config_1.default.torrents.details.leechers && hasLeechers)
-                                    row.push(title.peers);
+                                    row.push(_.isNumber(title.peers) ? title.peers : '');
                                 if (config_1.default.torrents.details.size && hasSize)
-                                    row.push(Utils.torrent.parseSize(title.size));
+                                    row.push(_.isString(title.size) ? Utils.torrent.parseSize(title.size) : '');
                                 if (config_1.default.torrents.details.time && hasTime)
-                                    row.push(title.time);
+                                    row.push(_.isString(title.time) ? title.time : '');
                                 table.push(row);
                             });
                             colors = [undefined];
@@ -135,7 +135,7 @@ var Utils = {
     },
     torrent: {
         parseTitle: function (title) {
-            return title.replace(/\d+(\.\d+)? ?[k|m|g|t]b/gi, '') // Size info
+            return String(title).replace(/\d+(\.\d+)? ?[k|m|g|t]b/gi, '') // Size info
                 .replace(/\s\s+/g, ' ') // Multiple spaces
                 .replace(/- -/g, '-') // Empty blocks between dashes
                 .replace(/\s*-$/, ''); // Ending dash
@@ -157,17 +157,48 @@ var Utils = {
         download: function (_a) {
             var url = _a.url, filename = _a.filename;
             return __awaiter(this, void 0, void 0, function () {
-                var content, stream;
+                var content, filepath, stream;
                 return __generator(this, function (_b) {
                     switch (_b.label) {
-                        case 0: return [4 /*yield*/, request(url)];
+                        case 0: return [4 /*yield*/, request(encodeURI(url))];
                         case 1:
-                            content = _b.sent(), stream = config_1.default.downloads.save ? fs.createWriteStream(path.join(config_1.default.downloads.path, filename)) : temp.createWriteStream();
+                            content = _b.sent(), filepath = path.join(config_1.default.downloads.path, Utils.subtitles.sanitizeFilename(filename));
+                            if (config_1.default.downloads.save)
+                                Utils.fs.ensureDir(path.dirname(filepath));
+                            stream = config_1.default.downloads.save ? fs.createWriteStream(filepath) : temp.createWriteStream();
                             stream.write(content);
                             stream.end();
                             return [2 /*return*/, stream];
                     }
                 });
+            });
+        },
+        sanitizeFilename: function (filename) {
+            return path.basename(String(filename)).replace(/[\\/:*?"<>|\x00-\x1F]/g, '_');
+        }
+    },
+    fs: {
+        ensureDir: function (dir) {
+            if (fs.existsSync(dir))
+                return;
+            Utils.fs.ensureDir(path.dirname(dir));
+            fs.mkdirSync(dir);
+        }
+    },
+    promise: {
+        timeout: function (promise, ms, message) {
+            if (!ms || ms <= 0)
+                return promise;
+            var timer;
+            var timeout = new Promise(function (resolve, reject) {
+                timer = setTimeout(function () { return reject(new Error(message)); }, ms);
+            });
+            return Promise.race([promise, timeout]).then(function (result) {
+                clearTimeout(timer);
+                return result;
+            }, function (error) {
+                clearTimeout(timer);
+                throw error;
             });
         }
     },

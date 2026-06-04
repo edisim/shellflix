@@ -33,7 +33,8 @@ var Config = {
         providers: {
             available: ['1337x', 'ThePirateBay', 'ExtraTorrent', 'Rarbg', 'Torrent9', 'KickassTorrents', 'TorrentProject', 'Torrentz2'],
             active: '1337x'
-        }
+        },
+        timeout: 30000
     },
     subtitles: {
         limit: 30,
@@ -91,8 +92,25 @@ function initLocalConfig() {
     }
     catch (e) { }
 }
+function expandHomePath(value) {
+    if (!_.isString(value))
+        return value;
+    if (value === '~')
+        return os.homedir();
+    if (value.indexOf('~/') === 0)
+        return path.join(os.homedir(), value.slice(2));
+    if (value === '$HOME')
+        return os.homedir();
+    if (value.indexOf('$HOME/') === 0)
+        return path.join(os.homedir(), value.slice(6));
+    return value;
+}
+function initPaths() {
+    Config.downloads.path = expandHomePath(Config.downloads.path);
+}
 initLocale();
 initLocalConfig();
+initPaths();
 initPrompt();
 /* EXPORT */
 exports.default = Config;
