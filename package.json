@@ -1,6 +1,6 @@
 {
   "name": "shellflix",
-  "version": "1.11.5",
+  "version": "1.11.6",
   "description": "A fixed CLIFlix fork for streaming torrents from the terminal.",
   "bin": {
     "shellflix": "dist/src/bin/index.js"
@@ -92,5 +92,6 @@
   "overrides": {
     "http-node": "^1.2.0",
     "@types/lodash": "4.14.100"
-  }
+  },
+  "readmeFilename": "README.md"
 }

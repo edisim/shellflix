@@ -1,6 +1,6 @@
 {
     "name": "shellflix",
-    "version": "1.11.5",
+    "version": "1.11.6",
     "description": "A fixed CLIFlix fork for streaming torrents from the terminal.",
     "bin": {
         "shellflix": "dist/src/bin/index.js"
@@ -88,5 +88,6 @@
         "src",
         "LICENSE",
         "README.md"
-    ]
+    ],
+    "readmeFilename": "README.md"
 }
