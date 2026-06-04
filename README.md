@@ -1,107 +1,127 @@
 # Shellflix
 
-A fixed CLIFlix fork for streaming torrents from the terminal.
-
-It searches a torrent for you and streams it using a patched WebTorrent CLI to your favorite app. It supports subtitles too.
+Shellflix is a maintained CLIFlix fork with a modern terminal UI for finding and streaming legal torrents.
 
 [npm package](https://www.npmjs.com/package/shellflix) | [GitHub fork](https://github.com/edisim/shellflix)
 
-> **Warning**: If you don't know what a torrent is, or are unsure about the legality of the torrents you're downloading you shouldn't use `shellflix`.
+> **Legal use only.** Shellflix is a torrent client wrapper. Use it only with torrents you are allowed to access, such as your own torrents, public-domain material, or Creative Commons releases like Sintel.
+
+## Status
+
+- `master` tracks the stable `1.11.x` compatibility line.
+- `next` contains the v2 rewrite built with Pastel, Ink, React, Zod, and Vitest.
+- v2 is published only as `shellflix@next` until package install, streaming, and TUI smoke checks are complete.
 
 ## Install
 
+Stable:
+
 ```shell
-$ npm install -g shellflix
+npm install -g shellflix
+```
+
+Next preview:
+
+```shell
+npm install -g shellflix@next
 ```
 
 ## Usage
 
-#### Wizard
+Open the interactive TUI:
 
-Execute `shellflix` to run a wizard, it'll ask you everything it needs: a search query, which torrent to stream, and which app to use. If you want it may also search for subtitles for you.
+```shell
+shellflix
+```
 
-<p align="center">
-  <img src="resources/wizard.gif" width="631" alt="Wizard">
-</p>
-
-#### I'm Feeling Lucky
-
-If you're feeling lucky, just run something like this to automatically pick the first result:
+Search and stream the first useful result:
 
 ```shell
 shellflix Sintel
 ```
 
-#### Manual
-
-You can also directly pass any of the valid torrent identifiers supported by [parse-torrent](https://github.com/webtorrent/parse-torrent) to stream it:
+Stream a legal magnet URI or torrent URL directly:
 
 ```shell
-shellflix "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com&ws=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2F&xs=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2Fsintel.torrent"
+shellflix "magnet:?xt=urn:btih:..."
 ```
 
-#### WebTorrent Options
-
-You can pass arbitrary options to the bundled WebTorrent CLI. Just write them after the special `--` argument:
+Forward options to the bundled WebTorrent CLI after `--`:
 
 ```shell
-shellflix -- --iina --pip
-shellflix -- --vlc --port 1234
 shellflix Sintel -- --vlc --port 1234
+shellflix -- --iina --pip
 ```
+
+## TUI Controls
+
+- `/` search again
+- `p` cycle provider
+- `s` toggle subtitles
+- `o` choose output mode
+- `Enter` stream selected result
+- `Esc` return to the main view
+
+The interface is keyboard-first, keeps stable columns for scanning, and shows provider/timeout state instead of silently hanging.
+
+## What v2 Fixes
+
+The v2 rewrite keeps the v1 repair work as requirements:
+
+- fixed global npm install path
+- Linux-compatible shebang
+- `~` and `$HOME` expansion in `~/.shellflix.json`
+- subtitle URL encoding
+- subtitle filename sanitizing
+- subtitle directory creation before write
+- provider timeout and fallback
+- `Search again` recovery path
+- no runtime `npx`
 
 ## Configuration
 
-You can customize `shellflix` to your likings via a `~/.shellflix.json` file.
+Shellflix reads `~/.shellflix.json`.
 
-These are the settings available:
-
-```js
+```json5
 {
-  "downloads": { // Downloads-related settings
-    "path": "~/Downloads", // If saving them, put them here
-    "save": true // Save the downloaded torrents or delete them upon exit
+  downloads: {
+    path: "~/Downloads",
+    save: true
   },
-  "outputs": { // Apps-related settings
-    "available": ["Airplay", "Chromecast", "DLNA", "MPlayer", "mpv", "VLC", "IINA", "XBMC"], // Apps to list when asking for the app
-    "favorites": ["VLC"] // Favorite apps, they will be listed before the others
+  outputs: {
+    available: ["VLC", "IINA", "mpv"],
+    favorites: ["VLC"]
   },
-  "torrents": { // Torrents-related settings
-    "limit": 30, // Number of torrents to show
-    "details": { // Extra columns to show
-      "seeders": true,
-      "leechers": true,
-      "size": true,
-      "time": false
-    },
-    "providers": { // Torrents providers-related settings
-      "available": ["1337x", "ThePirateBay", "ExtraTorrent", "Rarbg", "Torrent9", "KickassTorrents", "TorrentProject", "Torrentz2"], // Providers to list if none is active
-      "active": "1337x" // Active provider
+  torrents: {
+    limit: 30,
+    timeout: 30000,
+    providers: {
+      active: "1337x"
     }
   },
-  "subtitles": { // Subtitles-related settings
-    "limit": 30, // Number of subtitles to show
-    "details": { // Extra columns to show
-      "downloads": true
-    },
-    "languages": { // Languages-related settings
-      "available": ["Afrikaans", "..."], // Languages to list when asking for the subtitles' language
-      "favorites": ["English", "..."] // Favorite languages, they will be listed before the others
-    },
-    "opensubtitles": { // OpenSubtitles-related settings
-      "username": null, // Your OpenSubtitles username, required for increasing your IP quota
-      "password": null, // Your OpenSubtitles password, required for increasing your IP quota
-      "ssl": true
-    }
-  },
-  "webtorrent": { // WebTorrent-related options
-    "options": [ // Custom options to always pass to WebTorrent
-      '--keep-seeding'
-    ]
+  webtorrent: {
+    options: ["--keep-seeding"]
   }
 }
 ```
 
+## Development
+
+```shell
+npm install --min-release-age=0
+npm test
+npm run build
+npm run smoke
+npm pack --dry-run
+```
+
+## Known v2 Next Work
+
+- Replace the legacy WebTorrent helper dependency or harden it further.
+- Expand TUI tests around live keyboard flows.
+- Add subtitles selection inside the Ink surface.
+- Publish preview releases under the `next` npm tag only.
+
 ## License
 
-MIT © Fabio Spampinato
+MIT © Fabio Spampinato and Shellflix contributors
