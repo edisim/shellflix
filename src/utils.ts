@@ -241,7 +241,7 @@ const Utils = {
 
         if ( !Utils.webtorrent.options.isOutSet ( options ) ) {
 
-          const outPath = Config.downloads.save ? Config.downloads.path : temp.mkdirSync ( 'cliflix-' );
+          const outPath = Config.downloads.save ? Config.downloads.path : temp.mkdirSync ( 'shellflix-' );
 
           options = Utils.webtorrent.options.setOut ( options, outPath );
 

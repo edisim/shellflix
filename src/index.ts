@@ -203,13 +203,14 @@ const CLIFlix = {
 
     webtorrentOptions = Utils.webtorrent.options.parse ( webtorrentOptions, Config.webtorrent.options );
 
-    const execArgs = ['download', torrent, ...webtorrentOptions],
+    const webtorrentBin = require.resolve ( 'shellflix-webtorrent-cli/bin/cmd.js' ),
+          execArgs = [webtorrentBin, 'download', torrent, ...webtorrentOptions],
           execOpts = {
             cwd: path.resolve ( __dirname, '..' ),
             stdio: 'inherit'
           };
 
-    execa.sync ( 'webtorrent', execArgs, execOpts );
+    execa.sync ( process.execPath, execArgs, execOpts );
 
   }
 
