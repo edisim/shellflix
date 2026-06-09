@@ -1,8 +1,8 @@
 import {describe, expect, it} from 'vitest';
-import {canStreamSelectedResult, createInitialTuiState, reduceTuiState, shouldQuitFromInput} from '../source/core/tui-state.js';
+import {canStreamSelectedResult, createInitialTuiState, getExitIntent, reduceTuiState} from '../source/core/tui-state.js';
 
 describe('tui state', () => {
-  it('moves selection and enters search mode with keyboard actions', () => {
+  it('moves selection and enters search mode with escape', () => {
     const state = createInitialTuiState({
       query: 'Sintel',
       results: [
@@ -14,7 +14,7 @@ describe('tui state', () => {
     const moved = reduceTuiState(state, {type: 'moveSelection', direction: 1});
     expect(moved.selectedIndex).toBe(1);
 
-    const searching = reduceTuiState(moved, {type: 'keyboard', key: '/'});
+    const searching = reduceTuiState(moved, {type: 'keyboard', key: 'escape'});
     expect(searching.mode).toBe('search');
   });
 
@@ -39,7 +39,7 @@ describe('tui state', () => {
     expect(reduceTuiState({...state, subtitleEnabled: true}, {type: 'keyboard', key: 's'}).subtitleEnabled).toBe(false);
     expect(reduceTuiState(state, {type: 'keyboard', key: 'o'}).mode).toBe('output');
     expect(reduceTuiState(state, {type: 'keyboard', key: 'return'}).mode).toBe('streaming');
-    expect(reduceTuiState(state, {type: 'keyboard', key: 'escape'}).status).toBe('Cancelled');
+    expect(reduceTuiState(state, {type: 'keyboard', key: 'escape'}).mode).toBe('search');
     expect(reduceTuiState(state, {type: 'keyboard', key: 'x'})).toBe(state);
   });
 
@@ -58,10 +58,10 @@ describe('tui state', () => {
     expect(canStreamSelectedResult(createInitialTuiState({results: [{title: 'Sintel 1080p'}]}))).toBe(true);
   });
 
-  it('recognizes escape and ctrl+c as quit input', () => {
-    expect(shouldQuitFromInput('', {escape: true})).toBe(true);
-    expect(shouldQuitFromInput('c', {ctrl: true})).toBe(true);
-    expect(shouldQuitFromInput('\u0003', {})).toBe(true);
-    expect(shouldQuitFromInput('c', {})).toBe(false);
+  it('recognizes escape and ctrl+c as exit intents', () => {
+    expect(getExitIntent('', {escape: true})).toBe('escape');
+    expect(getExitIntent('c', {ctrl: true})).toBe('ctrl+c');
+    expect(getExitIntent('\u0003', {})).toBe('ctrl+c');
+    expect(getExitIntent('c', {})).toBeNull();
   });
 });

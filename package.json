@@ -13,6 +13,9 @@
     "clean": "rimraf dist",
     "prepack": "npm run clean && npm run build && node scripts/scrub-bundled-deps.cjs",
     "test": "vitest run",
+    "test:e2e:player": "node test/e2e/player-stream.cjs",
+    "test:live-player": "npm run build && node test/e2e/live-player.cjs",
+    "test:full": "npm run build && npm test && npm run smoke && npm run test:e2e:player",
     "test:coverage": "vitest run --coverage",
     "check": "npm run build && npm test",
     "smoke": "node dist/cli.js --version && node dist/cli.js --help"

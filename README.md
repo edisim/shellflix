@@ -55,12 +55,9 @@ shellflix -- --iina --pip
 
 ## TUI Controls
 
-- `/` search again
-- `p` cycle provider
-- `s` toggle subtitles
-- `o` choose output mode
-- `Enter` stream selected result
-- `Esc` or `Ctrl+C` quit immediately
+- Search mode: `Enter` search, `Esc` twice or `Ctrl+C` twice quit
+- Results mode: `Enter` stream, `Esc` search, `p` cycle provider, `s` toggle subtitles, `o` choose output app
+- Output mode: `↑/↓` choose, `Enter` save to `~/.shellflix.json`, `Esc` search
 
 The interface is keyboard-first, keeps stable columns for scanning, and shows provider/timeout state instead of silently hanging.
 
@@ -102,7 +99,7 @@ Shellflix reads `~/.shellflix.json`.
   },
   outputs: {
     available: ["VLC", "IINA", "mpv"],
-    favorites: ["VLC"]
+    favorites: ["IINA", "VLC"]
   },
   torrents: {
     limit: 30,
@@ -124,8 +121,15 @@ npm install --min-release-age=0
 npm test
 npm run build
 npm run smoke
+npm run test:e2e:player
+npm run test:live-player
+npm run test:full
 npm pack --dry-run
 ```
+
+`npm run test:e2e:player` builds a local legal torrent fixture, selects `mpv` through `~/.shellflix.json`, opens a fake player binary, and verifies that the player receives the actual HTTP stream bytes.
+
+`npm run test:live-player` opens a real local player against a generated legal WAV torrent stream. It auto-detects IINA, VLC, or mpv, and can be pinned with `npm run test:live-player -- --player iina --duration 30`. Use `--keep-open` to leave Shellflix running until Ctrl+C.
 
 ## Known v2 Next Work
 

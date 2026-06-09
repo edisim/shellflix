@@ -3,6 +3,7 @@ import {isSearchableTorrentResult} from './search.js';
 
 export type TuiMode = 'idle' | 'search' | 'provider' | 'subtitles' | 'output' | 'streaming' | 'error';
 export type TuiLayout = 'full' | 'compact';
+export type ExitIntent = 'escape' | 'ctrl+c';
 
 export type TuiState = {
   query: string;
@@ -18,6 +19,7 @@ export type TuiState = {
 
 export type TuiAction =
   | {type: 'moveSelection'; direction: 1 | -1}
+  | {type: 'setOutput'; output: string}
   | {type: 'keyboard'; key: string}
   | {type: 'setResults'; results: TorrentResult[]}
   | {type: 'setStatus'; status: string};
@@ -53,6 +55,9 @@ export function reduceTuiState(state: TuiState, action: TuiAction): TuiState {
       return {...state, selectedIndex};
     }
 
+    case 'setOutput':
+      return {...state, output: action.output, mode: 'idle', status: `Output set to ${action.output}.`};
+
     case 'keyboard':
       return reduceKeyboard(state, action.key);
 
@@ -68,8 +73,16 @@ export function canStreamSelectedResult(state: TuiState): boolean {
   return isSearchableTorrentResult(state.results[state.selectedIndex]);
 }
 
-export function shouldQuitFromInput(input: string, key: KeyboardInput): boolean {
-  return Boolean(key.escape || (key.ctrl && input.toLowerCase() === 'c') || input === '\u0003');
+export function getExitIntent(input: string, key: KeyboardInput): ExitIntent | null {
+  if (key.escape) {
+    return 'escape';
+  }
+
+  if ((key.ctrl && input.toLowerCase() === 'c') || input === '\u0003') {
+    return 'ctrl+c';
+  }
+
+  return null;
 }
 
 function reduceKeyboard(state: TuiState, key: string): TuiState {
@@ -90,12 +103,12 @@ function reduceKeyboard(state: TuiState, key: string): TuiState {
   }
 
   if (key === 'escape') {
-    return {...state, mode: 'idle', status: 'Cancelled'};
+    return {...state, mode: 'search', status: 'Search mode. Press Esc again to quit.'};
   }
 
   if (key === 'return') {
     if (!canStreamSelectedResult(state)) {
-      return {...state, mode: 'idle', status: 'No streamable result selected. Press / to search again.'};
+      return {...state, mode: 'idle', status: 'No streamable result selected. Press Esc to search again.'};
     }
 
     return {...state, mode: 'streaming', status: 'Starting stream'};

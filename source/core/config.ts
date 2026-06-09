@@ -1,6 +1,6 @@
-import {existsSync, readFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {homedir} from 'node:os';
-import {join} from 'node:path';
+import {dirname, join} from 'node:path';
 import JSON5 from 'json5';
 import localeCode from 'locale-code';
 import type {ShellflixConfig} from './types.js';
@@ -10,6 +10,12 @@ type ConfigLoaderOptions = {
   fileExists?: (path: string) => boolean;
   readFile?: (path: string) => string;
   locale?: string;
+};
+
+type ConfigWriterOptions = ConfigLoaderOptions & {
+  localConfigPath?: string;
+  mkdir?: (path: string) => void;
+  writeFile?: (path: string, value: string) => void;
 };
 
 export const defaultConfig: ShellflixConfig = {
@@ -112,6 +118,31 @@ export function loadConfig(options: ConfigLoaderOptions = {}): ShellflixConfig {
   return config;
 }
 
+export function applyPreferredOutput(config: ShellflixConfig, output: string): ShellflixConfig {
+  const next = structuredClone(config);
+  next.outputs.favorites = promoteValue(output, next.outputs.favorites);
+
+  return next;
+}
+
+export function saveOutputFavorite(output: string, options: ConfigWriterOptions = {}): void {
+  const home = options.homeDir ?? homedir();
+  const localConfigPath = options.localConfigPath ?? join(home, '.shellflix.json');
+  const fileExists = options.fileExists ?? existsSync;
+  const readFile = options.readFile ?? (path => readFileSync(path, 'utf8'));
+  const writeFile = options.writeFile ?? ((path, value) => writeFileSync(path, value));
+  const mkdir = options.mkdir ?? (path => mkdirSync(path, {recursive: true}));
+  const localConfig = readLocalConfig(localConfigPath, fileExists, readFile);
+  const outputs = isPlainObject(localConfig.outputs) ? {...localConfig.outputs} : {};
+  const favorites = Array.isArray(outputs.favorites) ? outputs.favorites.filter(isString) : [];
+
+  outputs.favorites = promoteValue(output, favorites);
+  localConfig.outputs = outputs;
+
+  mkdir(dirname(localConfigPath));
+  writeFile(localConfigPath, `${JSON.stringify(localConfig, null, 2)}\n`);
+}
+
 function mergeConfig(target: Record<string, unknown>, source: Record<string, unknown>): void {
   for (const [key, value] of Object.entries(source)) {
     if (Array.isArray(value)) {
@@ -130,4 +161,36 @@ function mergeConfig(target: Record<string, unknown>, source: Record<string, unk
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readLocalConfig(
+  localConfigPath: string,
+  fileExists: (path: string) => boolean,
+  readFile: (path: string) => string
+): Record<string, unknown> {
+  if (!fileExists(localConfigPath)) {
+    return {};
+  }
+
+  const rawConfig = readFile(localConfigPath);
+
+  if (!rawConfig.trim()) {
+    return {};
+  }
+
+  const localConfig = JSON5.parse(rawConfig) as unknown;
+
+  if (!isPlainObject(localConfig)) {
+    throw new Error(`${localConfigPath} must contain an object.`);
+  }
+
+  return localConfig;
+}
+
+function promoteValue(value: string, values: string[]): string[] {
+  return [value, ...values.filter(item => item !== value)];
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
 }

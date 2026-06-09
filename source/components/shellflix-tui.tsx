@@ -1,6 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import {Badge, StatusMessage} from '@inkjs/ui';
+import {StatusMessage} from '@inkjs/ui';
+import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchInputContent} from '../core/tui-copy.js';
 import type {TuiState} from '../core/tui-state.js';
 import type {TorrentResult} from '../core/types.js';
 
@@ -14,26 +15,22 @@ export function ShellflixTui({state}: Props) {
   return (
     <Box flexDirection="column" gap={1}>
       <Box borderStyle="single" borderColor="gray" flexDirection="column" paddingX={1}>
-        <Box justifyContent="space-between">
-          <Box gap={1}>
-            <Text bold>Shellflix</Text>
-            <Badge color={state.mode === 'streaming' ? 'green' : 'cyan'}>{state.mode}</Badge>
-          </Box>
-          <Text color="gray">{state.provider} · {state.layout}</Text>
-        </Box>
-
-        <Box>
-          <Text color="gray">Search: </Text>
-          <Text>{state.query || 'press / to search legal torrents'}</Text>
-        </Box>
-
+        <Text bold>{buildOpenTuiTitle()}</Text>
+        <Text color="gray">{buildOpenTuiMeta(state)}</Text>
         <StatusMessage variant={state.mode === 'error' ? 'error' : 'info'}>{state.status}</StatusMessage>
       </Box>
+
+      {state.mode === 'search' ? (
+        <Box borderStyle="single" borderColor="cyan" flexDirection="column" paddingX={1}>
+          <Text color="gray">Search query</Text>
+          <Text>{buildSearchInputContent(state.query)}</Text>
+        </Box>
+      ) : null}
 
       <Box borderStyle="single" borderColor="gray" flexDirection="column" paddingX={1}>
         <Text bold>Results</Text>
         {state.results.length === 0 ? (
-          <Text color="gray">No results yet. Try Sintel, public-domain torrents, or your own magnet link.</Text>
+          <Text color="gray">{buildEmptyResultsText(state.mode, state.status)}</Text>
         ) : (
           state.results.slice(0, 10).map((result, index) => (
             <ResultRow key={`${result.provider ?? 'provider'}-${result.title}-${index}`} result={result} selected={index === state.selectedIndex} compact={state.layout === 'compact'} />
@@ -49,7 +46,7 @@ export function ShellflixTui({state}: Props) {
         </Box>
       ) : null}
 
-      <Text color="gray">Enter stream · / search · p provider · s subtitles · o output · Esc quit</Text>
+      <Text color="gray">{buildFooterContent(state.mode)}</Text>
     </Box>
   );
 }

@@ -4,12 +4,13 @@ import {TextInput} from '@inkjs/ui';
 import {argument, option} from 'pastel';
 import zod from 'zod';
 import {ShellflixTui} from '../components/shellflix-tui.js';
-import {loadConfig} from '../core/config.js';
+import {applyPreferredOutput, loadConfig, saveOutputFavorite} from '../core/config.js';
 import {runClackFallback} from '../core/fallback.js';
+import {getOutputChoices} from '../core/output.js';
 import {isSearchableTorrentResult, searchProviders} from '../core/search.js';
 import {torrentSearchAdapter} from '../core/search-adapter.js';
 import {streamTorrent} from '../core/stream.js';
-import {canStreamSelectedResult, createInitialTuiState, reduceTuiState, shouldQuitFromInput, type TuiState} from '../core/tui-state.js';
+import {canStreamSelectedResult, createInitialTuiState, getExitIntent, reduceTuiState, type ExitIntent, type TuiState} from '../core/tui-state.js';
 import type {ShellflixConfig, TorrentResult} from '../core/types.js';
 import {getForwardedWebtorrentOptions} from '../runtime.js';
 
@@ -55,7 +56,9 @@ export default function IndexCommand(props: Props) {
   const {exit} = useApp();
   const {stdout} = useStdout();
   const didStart = useRef(false);
-  const quitCount = useRef(0);
+  const pendingExitIntent = useRef<ExitIntent | null>(null);
+  const exitIntentTimer = useRef<NodeJS.Timeout | undefined>(undefined);
+  const lastExitIntentAt = useRef(0);
   const [searchInput, setSearchInput] = useState(initialQuery);
   const [state, setState] = useState<TuiState>(() => createInitialTuiState({
     query: initialQuery,
@@ -86,13 +89,13 @@ export default function IndexCommand(props: Props) {
       selectedIndex: 0,
       status: result.results.length > 0
         ? `Found ${result.results.length} result(s) via ${lastAttempt?.provider ?? current.provider}`
-        : 'No torrents found. Press / to search again or p to change provider.'
+        : 'No torrents found. Press Esc to search again or p to change provider.'
     }));
   }, [config]);
 
-  const startSelectedStream = useCallback(async (torrent: TorrentResult | undefined) => {
+  const startSelectedStream = useCallback(async (torrent: TorrentResult | undefined, output = state.output) => {
     if (!isSearchableTorrentResult(torrent)) {
-      setState(current => ({...current, mode: 'idle', status: 'No streamable result selected. Press / to search again.'}));
+      setState(current => ({...current, mode: 'idle', status: 'No streamable result selected. Press Esc to search again.'}));
       return;
     }
 
@@ -107,32 +110,59 @@ export default function IndexCommand(props: Props) {
     const status = streamTorrent({
       torrent: magnet,
       webtorrentOptions: getForwardedWebtorrentOptions(),
-      config
+      config,
+      output
     });
 
     process.exitCode = status;
     exit();
-  }, [config, exit]);
+  }, [config, exit, state.output]);
 
-  const quit = useCallback(() => {
-    quitCount.current += 1;
-    exit();
+  const resetExitIntent = useCallback(() => {
+    pendingExitIntent.current = null;
 
-    if (quitCount.current >= 1) {
-      process.exit(130);
+    if (exitIntentTimer.current) {
+      clearTimeout(exitIntentTimer.current);
+      exitIntentTimer.current = undefined;
     }
-  }, [exit]);
+  }, []);
+
+  const handleExitIntent = useCallback((intent: ExitIntent) => {
+    const now = Date.now();
+
+    if (pendingExitIntent.current === intent) {
+      if (now - lastExitIntentAt.current < 200) {
+        return;
+      }
+
+      exit();
+      process.exit(130);
+      return;
+    }
+
+    pendingExitIntent.current = intent;
+    lastExitIntentAt.current = now;
+    exitIntentTimer.current = setTimeout(resetExitIntent, 2500);
+
+    if (intent === 'escape') {
+      setState(current => reduceTuiState(current, {type: 'keyboard', key: 'escape'}));
+      return;
+    }
+
+    setState(current => ({...current, status: 'Press Ctrl+C again to quit.'}));
+  }, [exit, resetExitIntent]);
 
   useEffect(() => {
     if (!canRenderTui) {
       return;
     }
 
-    process.on('SIGINT', quit);
+    const handleSigint = () => handleExitIntent('ctrl+c');
+    process.on('SIGINT', handleSigint);
     return () => {
-      process.off('SIGINT', quit);
+      process.off('SIGINT', handleSigint);
     };
-  }, [canRenderTui, quit]);
+  }, [canRenderTui, handleExitIntent]);
 
   useEffect(() => {
     if (didStart.current) {
@@ -185,14 +215,18 @@ export default function IndexCommand(props: Props) {
   }, [canPrompt, canRenderTui, config, exit, initialQuery, runSearch, startSelectedStream]);
 
   useInput((input, key) => {
-    if (shouldQuitFromInput(input, key)) {
-      quit();
+    const exitIntent = getExitIntent(input, key);
+
+    if (exitIntent) {
+      handleExitIntent(exitIntent);
       return;
     }
 
     if (state.mode === 'search') {
       return;
     }
+
+    resetExitIntent();
 
     if (key.upArrow) {
       setState(current => reduceTuiState(current, {type: 'moveSelection', direction: -1}));
@@ -225,8 +259,13 @@ export default function IndexCommand(props: Props) {
       return;
     }
 
-    if (input === 's' || input === 'o') {
+    if (input === 's') {
       setState(current => reduceTuiState(current, {type: 'keyboard', key: input}));
+      return;
+    }
+
+    if (input === 'o') {
+      setState(current => cycleOutput(current, config));
     }
   }, {isActive: canRenderTui});
 
@@ -243,8 +282,12 @@ export default function IndexCommand(props: Props) {
           <TextInput
             placeholder="Sintel or your own legal torrent"
             defaultValue={searchInput}
-            onChange={setSearchInput}
+            onChange={value => {
+              resetExitIntent();
+              setSearchInput(value);
+            }}
             onSubmit={query => {
+              resetExitIntent();
               if (query.trim()) {
                 void runSearch(query.trim());
               }
@@ -276,8 +319,27 @@ function cycleProvider(state: TuiState, config: ShellflixConfig): TuiState {
     ...state,
     provider: nextProvider,
     mode: 'provider',
-    status: `Provider set to ${nextProvider}. Press / to search.`
+    status: `Provider set to ${nextProvider}. Press Esc to search.`
   };
+}
+
+function cycleOutput(state: TuiState, config: ShellflixConfig): TuiState {
+  const outputs = getOutputChoices(config);
+  const currentIndex = outputs.indexOf(state.output);
+  const nextOutput = outputs[(currentIndex + 1) % outputs.length] ?? state.output;
+  const nextConfig = applyPreferredOutput(config, nextOutput);
+
+  try {
+    saveOutputFavorite(nextOutput, {localConfigPath: nextConfig.localConfigPath});
+    return {...reduceTuiState(state, {type: 'setOutput', output: nextOutput}), status: `Output set to ${nextOutput}. Saved to ~/.shellflix.json.`};
+  } catch (error) {
+    return {
+      ...state,
+      output: nextOutput,
+      mode: 'output',
+      status: `Output set to ${nextOutput}, but config could not be saved: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
 }
 
 function isTorrentIdentifier(value: string): boolean {

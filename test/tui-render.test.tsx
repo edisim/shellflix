@@ -9,6 +9,7 @@ describe('ShellflixTui', () => {
     const state = createInitialTuiState({
       query: 'Sintel',
       status: 'Searching 1337x...',
+      mode: 'idle',
       results: [{title: 'Sintel 1080p', provider: '1337x', seeds: 120, peers: 4, size: '1.2 GB'}]
     });
 
@@ -23,14 +24,17 @@ describe('ShellflixTui', () => {
   it('renders compact empty state without a details pane', () => {
     const state = createInitialTuiState({
       query: '',
+      mode: 'search',
       terminalWidth: 60,
       results: []
     });
 
     const {lastFrame} = render(<ShellflixTui state={state} />);
 
-    expect(lastFrame()).toContain('No results yet');
-    expect(lastFrame()).toContain('compact');
+    expect(lastFrame()).toContain('Search query');
+    expect(lastFrame()).toContain('Results will appear here');
+    expect(lastFrame()).toContain('Enter search');
+    expect(lastFrame()).not.toContain('provider');
     expect(lastFrame()).not.toContain('Details');
   });
 });
