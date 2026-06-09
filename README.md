@@ -9,7 +9,7 @@ Shellflix is a maintained CLIFlix fork with a modern terminal UI for finding and
 ## Status
 
 - `master` tracks the stable `1.11.x` compatibility line.
-- `next` contains the v2 rewrite built with Pastel, Ink, React, Zod, and Vitest.
+- `next` contains the v2 rewrite. It is now OpenTUI-first for interactive terminals, with the Node/Pastel/Ink path kept as fallback while OpenTUI's Node renderer support matures.
 - v2 is published only as `shellflix@next` until package install, streaming, and TUI smoke checks are complete.
 
 ## Install
@@ -60,9 +60,21 @@ shellflix -- --iina --pip
 - `s` toggle subtitles
 - `o` choose output mode
 - `Enter` stream selected result
-- `Esc` return to the main view
+- `Esc` or `Ctrl+C` quit immediately
 
 The interface is keyboard-first, keeps stable columns for scanning, and shows provider/timeout state instead of silently hanging.
+
+## OpenTUI Runtime
+
+Shellflix v2 prefers OpenTUI when you run it in an interactive terminal and `bun` is available on `PATH`.
+
+OpenTUI currently renders through its native Zig core. In Shellflix, the npm-installed `shellflix` binary remains a Node entrypoint and trampolines into the Bun/OpenTUI renderer only when that is safe. If Bun is not available, or if you pass `--help`/`--version`, Shellflix keeps using the Node-compatible fallback path.
+
+Force the fallback renderer:
+
+```shell
+SHELLFLIX_RENDERER=ink shellflix
+```
 
 ## What v2 Fixes
 
@@ -118,8 +130,9 @@ npm pack --dry-run
 ## Known v2 Next Work
 
 - Replace the legacy WebTorrent helper dependency or harden it further.
-- Expand TUI tests around live keyboard flows.
-- Add subtitles selection inside the Ink surface.
+- Expand OpenTUI tests around live keyboard flows.
+- Add subtitles selection inside the OpenTUI surface.
+- Track OpenTUI's native Node renderer support so the Bun trampoline can eventually disappear.
 - Publish preview releases under the `next` npm tag only.
 
 ## License

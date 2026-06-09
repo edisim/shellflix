@@ -2,8 +2,10 @@
 
 ## 2.0.0-next.0
 
+- Pivoted interactive v2 sessions to an OpenTUI renderer when Bun is available, while keeping the Node/Pastel/Ink fallback path.
 - Rebuilt the CLI around Pastel, Ink, React, and Zod.
 - Added a keyboard-first terminal UI with search status, provider state, result table, and detail pane.
+- Added hard quit behavior for `Esc` and `Ctrl+C`.
 - Added Clack fallback prompts for non-interactive terminals.
 - Split config, search, subtitle, WebTorrent, argument parsing, and TUI state into testable modules.
 - Added Vitest coverage for v1 regression fixes and v2 TUI state/rendering.
