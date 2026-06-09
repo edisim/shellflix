@@ -39,7 +39,7 @@ export function createInitialTuiState(input: InitialStateInput = {}): TuiState {
     provider: input.provider ?? '1337x',
     status: input.status ?? 'Ready',
     mode: input.mode ?? 'idle',
-    layout: (input.terminalWidth ?? 100) < 80 ? 'compact' : 'full',
+    layout: (input.terminalWidth ?? 100) < 110 ? 'compact' : 'full',
     selectedIndex: input.selectedIndex ?? 0,
     results: input.results ?? [],
     subtitleEnabled: input.subtitleEnabled ?? false,
@@ -103,12 +103,12 @@ function reduceKeyboard(state: TuiState, key: string): TuiState {
   }
 
   if (key === 'escape') {
-    return {...state, mode: 'search', status: 'Search mode. Press Esc again to quit.'};
+    return {...state, mode: 'search', status: 'Search mode. Type a query or press Enter.'};
   }
 
   if (key === 'return') {
     if (!canStreamSelectedResult(state)) {
-      return {...state, mode: 'idle', status: 'No streamable result selected. Press Esc to search again.'};
+      return {...state, mode: 'idle', status: 'No streamable result selected. Press / to search again.'};
     }
 
     return {...state, mode: 'streaming', status: 'Starting stream'};

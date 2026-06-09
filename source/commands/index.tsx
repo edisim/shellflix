@@ -58,9 +58,6 @@ export default function IndexCommand(props: Props) {
   const {exit} = useApp();
   const {stdout} = useStdout();
   const didStart = useRef(false);
-  const pendingExitIntent = useRef<ExitIntent | null>(null);
-  const exitIntentTimer = useRef<NodeJS.Timeout | undefined>(undefined);
-  const lastExitIntentAt = useRef(0);
   const [searchInput, setSearchInput] = useState(initialQuery);
   const [state, setState] = useState<TuiState>(() => createInitialTuiState({
     query: initialQuery,
@@ -91,13 +88,13 @@ export default function IndexCommand(props: Props) {
       selectedIndex: 0,
       status: result.results.length > 0
         ? `Found ${result.results.length} result(s) via ${lastAttempt?.provider ?? current.provider}`
-        : 'No torrents found. Press Esc to search again or p to change provider.'
+        : 'No torrents found. Press / to search again or p to change provider.'
     }));
   }, [config]);
 
   const startSelectedStream = useCallback(async (torrent: TorrentResult | undefined, output = state.output) => {
     if (!isSearchableTorrentResult(torrent)) {
-      setState(current => ({...current, mode: 'idle', status: 'No streamable result selected. Press Esc to search again.'}));
+      setState(current => ({...current, mode: 'idle', status: 'No streamable result selected. Press / to search again.'}));
       return;
     }
 
@@ -105,7 +102,7 @@ export default function IndexCommand(props: Props) {
     const magnet = torrent.magnet ?? await torrentSearchAdapter.getMagnet(torrent);
 
     if (!magnet) {
-      setState(current => ({...current, mode: 'error', status: 'Magnet not found. Press Esc and try another result.'}));
+      setState(current => ({...current, mode: 'error', status: 'Magnet not found. Press / and try another result.'}));
       return;
     }
 
@@ -120,39 +117,10 @@ export default function IndexCommand(props: Props) {
     exit();
   }, [config, exit, state.output]);
 
-  const resetExitIntent = useCallback(() => {
-    pendingExitIntent.current = null;
-
-    if (exitIntentTimer.current) {
-      clearTimeout(exitIntentTimer.current);
-      exitIntentTimer.current = undefined;
-    }
-  }, []);
-
-  const handleExitIntent = useCallback((intent: ExitIntent) => {
-    const now = Date.now();
-
-    if (pendingExitIntent.current === intent) {
-      if (now - lastExitIntentAt.current < 200) {
-        return;
-      }
-
-      exit();
-      process.exit(130);
-      return;
-    }
-
-    pendingExitIntent.current = intent;
-    lastExitIntentAt.current = now;
-    exitIntentTimer.current = setTimeout(resetExitIntent, 2500);
-
-    if (intent === 'escape') {
-      setState(current => reduceTuiState(current, {type: 'keyboard', key: 'escape'}));
-      return;
-    }
-
-    setState(current => ({...current, status: 'Press Ctrl+C again to quit.'}));
-  }, [exit, resetExitIntent]);
+  const handleExitIntent = useCallback((_intent: ExitIntent) => {
+    exit();
+    process.exit(130);
+  }, [exit]);
 
   useEffect(() => {
     if (!canRenderTui) {
@@ -228,8 +196,6 @@ export default function IndexCommand(props: Props) {
       return;
     }
 
-    resetExitIntent();
-
     if (key.upArrow) {
       setState(current => reduceTuiState(current, {type: 'moveSelection', direction: -1}));
       return;
@@ -285,11 +251,9 @@ export default function IndexCommand(props: Props) {
             placeholder="Sintel or your own legal torrent"
             defaultValue={searchInput}
             onChange={value => {
-              resetExitIntent();
               setSearchInput(value);
             }}
             onSubmit={query => {
-              resetExitIntent();
               if (query.trim()) {
                 void runSearch(query.trim());
               }
@@ -321,7 +285,7 @@ function cycleProvider(state: TuiState, config: ShellflixConfig): TuiState {
     ...state,
     provider: nextProvider,
     mode: 'provider',
-    status: `Provider set to ${nextProvider}. Press Esc to search.`
+    status: `Provider set to ${nextProvider}. Press / to search.`
   };
 }
 

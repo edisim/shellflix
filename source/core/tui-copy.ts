@@ -1,4 +1,4 @@
-import type {TuiMode, TuiState} from './tui-state.js';
+import type {TuiLayout, TuiMode, TuiState} from './tui-state.js';
 
 export function buildOpenTuiTitle(): string {
   return 'Shellflix';
@@ -25,16 +25,20 @@ export function buildSearchInputContent(value: string): string {
   return `> ${query || 'Sintel or magnet/torrent URL'}${query ? '_' : ''}`;
 }
 
-export function buildFooterContent(mode: TuiMode): string {
+export function buildFooterContent(mode: TuiMode, layout: TuiLayout = 'full'): string {
   if (mode === 'search') {
-    return 'Enter search · Esc Esc quit · Ctrl+C Ctrl+C quit';
+    return 'Type query · Enter search · Esc quit · Ctrl+C quit';
   }
 
   if (mode === 'output') {
-    return '↑/↓ choose · Enter save · Esc search · Esc Esc quit · Ctrl+C Ctrl+C quit';
+    return '↑/↓ choose · Enter save · Esc quit · Ctrl+C quit';
   }
 
-  return '↑/↓ select · Enter stream · Esc search · p provider · s subtitles · o output · Esc Esc quit';
+  if (layout === 'compact') {
+    return '↑/↓ select · Enter stream · / search · Esc quit\np provider · s subtitles · o output · Ctrl+C quit';
+  }
+
+  return '↑/↓ select · Enter stream · / search · p provider · s subtitles · o output\nEsc quit · Ctrl+C quit';
 }
 
 export function buildEmptyResultsText(mode: TuiMode, status: string): string {
@@ -43,8 +47,8 @@ export function buildEmptyResultsText(mode: TuiMode, status: string): string {
   }
 
   if (mode === 'search') {
-    return 'Results will appear here.';
+    return 'Type a query above, then press Enter.';
   }
 
-  return 'No matching torrents to show.';
+  return 'No matching torrents. Try another query or provider.';
 }

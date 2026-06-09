@@ -32,7 +32,7 @@ describe('ShellflixTui', () => {
     const {lastFrame} = render(<ShellflixTui state={state} />);
 
     expect(lastFrame()).toContain('Search query');
-    expect(lastFrame()).toContain('Results will appear here');
+    expect(lastFrame()).toContain('Type a query above');
     expect(lastFrame()).toContain('Enter search');
     expect(lastFrame()).not.toContain('provider');
     expect(lastFrame()).not.toContain('Details');

@@ -22,6 +22,8 @@ describe('tui state', () => {
     const state = createInitialTuiState({query: '', terminalWidth: 72});
 
     expect(state.layout).toBe('compact');
+    expect(createInitialTuiState({query: '', terminalWidth: 100}).layout).toBe('compact');
+    expect(createInitialTuiState({query: '', terminalWidth: 120}).layout).toBe('full');
   });
 
   it('handles primary keyboard modes and clamps selection', () => {

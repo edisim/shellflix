@@ -27,7 +27,8 @@ const {pastelArgs, webtorrentOptions} = splitShellflixArgs(rawArgs);
 const parsed = parseShellflixCliArgs(pastelArgs);
 const config = withCliOptions(loadConfig(), parsed);
 const locale = resolveSystemLocale();
-const visibleResultCount = 6;
+const maxVisibleResultCount = 12;
+const minVisibleResultCount = 4;
 const colors = {
   border: '#666666',
   text: '#d7e1e8',
@@ -59,7 +60,8 @@ type RunOpenTuiInput = {
 
 async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
   if (input.query && isTorrentIdentifier(input.query)) {
-    process.exit(streamTorrent({torrent: input.query, webtorrentOptions: input.webtorrentOptions, config: input.config}));
+    process.exitCode = streamTorrent({torrent: input.query, webtorrentOptions: input.webtorrentOptions, config: input.config});
+    return;
   }
 
   const renderer = await createCliRenderer({
@@ -67,6 +69,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     clearOnShutdown: true,
     openConsoleOnError: false,
     targetFps: 30,
+    useMouse: false,
     useKittyKeyboard: {
       disambiguate: true,
       alternateKeys: true
@@ -75,9 +78,6 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
 
   let didQuit = false;
   let activeConfig = input.config;
-  let pendingExitIntent: ExitIntent | null = null;
-  let lastExitIntentAt = 0;
-  let exitIntentTimer: NodeJS.Timeout | undefined;
   let selectedOutputIndex = Math.max(0, getOutputChoices(activeConfig).indexOf(activeConfig.outputs.favorites[0] ?? 'VLC'));
   let state = {
     ...createInitialTuiState({
@@ -169,7 +169,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     height: 2,
     wrapMode: 'word'
   });
-  const resultRows = Array.from({length: visibleResultCount}, (_, index) => ({
+  const resultRows = Array.from({length: maxVisibleResultCount}, (_, index) => ({
     line: new TextRenderable(renderer, {
       id: `shellflix-result-line-${index}`,
       content: '',
@@ -183,7 +183,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
   const resultRowsPanel = new BoxRenderable(renderer, {
     id: 'shellflix-results',
     width: '100%',
-    height: visibleResultCount,
+    height: minVisibleResultCount,
     flexDirection: 'column'
   });
   resultsPanel.add(resultsTitle);
@@ -221,7 +221,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
   const outputTitle = new TextRenderable(renderer, {id: 'shellflix-output-title', content: 'Output', fg: colors.text, width: '100%', height: 1});
   const outputHint = new TextRenderable(renderer, {
     id: 'shellflix-output-hint',
-    content: '↑/↓ choose · Enter save · Esc search',
+    content: '↑/↓ choose · Enter save · Esc quit',
     fg: colors.muted,
     width: '100%',
     height: 1
@@ -245,7 +245,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     content: '',
     fg: colors.muted,
     width: '100%',
-    height: 1
+    height: 2
   });
 
   app.add(header);
@@ -256,14 +256,19 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
   app.add(footer);
   renderer.root.add(app);
 
-  function quit(code = 130): void {
+  function finishWithCode(code: number): void {
     if (didQuit) {
-      process.exit(code);
+      return;
     }
 
     didQuit = true;
+    cleanupProcessListeners();
+    process.exitCode = code;
     renderer.destroy();
-    process.exit(code);
+  }
+
+  function quit(code = 130): void {
+    finishWithCode(code);
   }
 
   function setState(next: TuiState): void {
@@ -271,42 +276,8 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     renderState();
   }
 
-  function resetExitIntent(requestRender = false): void {
-    pendingExitIntent = null;
-
-    if (exitIntentTimer) {
-      clearTimeout(exitIntentTimer);
-      exitIntentTimer = undefined;
-    }
-
-    if (requestRender) {
-      renderState();
-    }
-  }
-
-  function handleExitIntent(intent: ExitIntent): void {
-    const now = Date.now();
-
-    if (pendingExitIntent === intent) {
-      if (now - lastExitIntentAt < 200) {
-        return;
-      }
-
-      quit();
-      return;
-    }
-
-    pendingExitIntent = intent;
-    lastExitIntentAt = now;
-    exitIntentTimer = setTimeout(() => resetExitIntent(true), 2500);
-
-    if (intent === 'escape') {
-      searchValue = state.query;
-      setState(reduceTuiState(state, {type: 'keyboard', key: 'escape'}));
-      return;
-    }
-
-    setState({...state, status: 'Press Ctrl+C again to quit.'});
+  function handleExitIntent(_intent: ExitIntent): void {
+    quit();
   }
 
   function renderOutputMenu(): void {
@@ -332,7 +303,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       }
 
       row.content = new StyledText([
-        resultChunk(selected ? '▶ ' : '  ', selected ? '#ffffff' : colors.muted, selected),
+        resultChunk(selected ? '> ' : '  ', selected ? '#ffffff' : colors.muted, selected),
         resultChunk(padColumn(output, 14), selected ? '#ffffff' : colors.text, selected),
         resultChunk(current ? ' current' : '', colors.info, selected)
       ]);
@@ -354,7 +325,10 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     resultRowsPanel.visible = state.results.length > 0;
     renderOutputMenu();
 
-    const visibleStart = getVisibleResultStart(state.selectedIndex, state.results.length);
+    const visibleResultCount = getVisibleResultCount(renderer.height, state);
+    resultRowsPanel.height = visibleResultCount;
+
+    const visibleStart = getVisibleResultStart(state.selectedIndex, state.results.length, visibleResultCount);
     resultsTitle.content = state.results.length > 0
       ? `Results ${visibleStart + 1}-${Math.min(visibleStart + visibleResultCount, state.results.length)} / ${state.results.length}`
       : 'Results';
@@ -365,9 +339,9 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       const row = resultRows[index];
       const selectedRow = resultIndex === state.selectedIndex;
 
-      row.line.visible = Boolean(result);
+      row.line.visible = index < visibleResultCount && Boolean(result);
 
-      if (!result) {
+      if (index >= visibleResultCount || !result) {
         row.line.content = '';
         continue;
       }
@@ -384,7 +358,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
 
     searchPanel.visible = state.mode === 'search';
     searchInput.content = buildSearchInputContent(searchValue);
-    footer.content = buildFooterContent(state.mode);
+    footer.content = buildFooterContent(state.mode, state.layout);
 
     renderer.root.requestRender();
   }
@@ -409,13 +383,13 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       selectedIndex: 0,
       status: result.results.length > 0
         ? `Found ${result.results.length} result(s) via ${lastAttempt?.provider ?? state.provider}`
-        : 'No torrents found. Press Esc to search again or p to change provider.'
+        : 'No torrents found. Press / to search again or p to change provider.'
     });
   }
 
   async function startSelectedStream(torrent: TorrentResult | undefined): Promise<void> {
     if (!isSearchableTorrentResult(torrent)) {
-      setState({...state, mode: 'idle', status: 'No streamable result selected. Press Esc to search again.'});
+      setState({...state, mode: 'idle', status: 'No streamable result selected. Press / to search again.'});
       return;
     }
 
@@ -423,12 +397,13 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     const magnet = torrent.magnet ?? await torrentSearchAdapter.getMagnet(torrent);
 
     if (!magnet) {
-      setState({...state, mode: 'error', status: 'Magnet not found. Press Esc and try another result.'});
+      setState({...state, mode: 'error', status: 'Magnet not found. Press / and try another result.'});
       return;
     }
 
+    cleanupProcessListeners();
     renderer.destroy();
-    process.exit(streamTorrent({torrent: magnet, webtorrentOptions: input.webtorrentOptions, config: activeConfig, output: state.output}));
+    process.exitCode = streamTorrent({torrent: magnet, webtorrentOptions: input.webtorrentOptions, config: activeConfig, output: state.output});
   }
 
   function moveOutputSelection(direction: 1 | -1): void {
@@ -498,8 +473,6 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       handleExitIntent(exitIntent);
       return;
     }
-
-    resetExitIntent();
 
     if (state.mode === 'search') {
       handleSearchKey(key);
@@ -577,14 +550,10 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
 
     if (inputValue === '\u001B\u001B') {
       handleExitIntent('escape');
-      lastExitIntentAt = 0;
-      handleExitIntent('escape');
       return;
     }
 
     if (inputValue === '\u0003\u0003') {
-      handleExitIntent('ctrl+c');
-      lastExitIntentAt = 0;
       handleExitIntent('ctrl+c');
       return;
     }
@@ -599,9 +568,23 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     }
   }
 
+  function handleSigint(): void {
+    handleExitIntent('ctrl+c');
+  }
+
+  function handleSigterm(): void {
+    quit(143);
+  }
+
+  function cleanupProcessListeners(): void {
+    process.stdin.off('data', handleRawInput);
+    process.off('SIGINT', handleSigint);
+    process.off('SIGTERM', handleSigterm);
+  }
+
   process.stdin.on('data', handleRawInput);
-  process.on('SIGINT', () => handleExitIntent('ctrl+c'));
-  process.once('SIGTERM', () => quit(143));
+  process.on('SIGINT', handleSigint);
+  process.once('SIGTERM', handleSigterm);
 
   renderState();
 
@@ -630,13 +613,13 @@ function cycleProvider(state: TuiState, config: ShellflixConfig): TuiState {
     ...state,
     provider: nextProvider,
     mode: 'provider',
-    status: `Provider set to ${nextProvider}. Press Esc to search.`
+    status: `Provider set to ${nextProvider}. Press / to search.`
   };
 }
 
 function buildResultsLegend(layout: TuiState['layout']): StyledText {
   return new StyledText([
-    fg(colors.muted)('Provider  '),
+    fg(colors.muted)('Source  '),
     fg(colors.seeders)('S seeders'),
     fg(colors.muted)('  '),
     fg(colors.leechers)('L leechers'),
@@ -646,12 +629,12 @@ function buildResultsLegend(layout: TuiState['layout']): StyledText {
 
 function buildResultRow(result: TorrentResult, selected: boolean, layout: TuiState['layout'], locale: string): StyledText {
   const columns = formatResultMetaColumns(result, {locale});
-  const titleWidth = layout === 'compact' ? 28 : 48;
+  const titleWidth = layout === 'compact' ? 30 : 50;
   const providerWidth = layout === 'compact' ? 10 : 14;
   const age = layout === 'compact' ? '' : `  ${truncate(columns.age, 28)}`;
 
   return new StyledText([
-    resultChunk(selected ? '▶ › ' : '    ', selected ? '#ffffff' : colors.muted, selected),
+    resultChunk(selected ? '> ' : '  ', selected ? '#ffffff' : colors.muted, selected),
     resultChunk(padColumn(truncate(result.title, titleWidth), titleWidth), selected ? '#ffffff' : colors.text, selected),
     resultChunk('  ', colors.muted, selected),
     resultChunk(padColumn(truncate(columns.provider, providerWidth), providerWidth), colors.muted, selected),
@@ -676,8 +659,8 @@ function padColumn(value: string, width: number): string {
   return value.length >= width ? value : value.padEnd(width, ' ');
 }
 
-function getVisibleResultStart(selectedIndex: number, resultCount: number): number {
-  return getVisibleStart(selectedIndex, resultCount, visibleResultCount);
+function getVisibleResultStart(selectedIndex: number, resultCount: number, visibleCount: number): number {
+  return getVisibleStart(selectedIndex, resultCount, visibleCount);
 }
 
 function getVisibleStart(selectedIndex: number, itemCount: number, visibleCount: number): number {
@@ -698,6 +681,25 @@ function getOutputVisibleStart(selectedIndex: number, itemCount: number, visible
 
 function getOpenTuiLayout(width: number): TuiState['layout'] {
   return width < 110 ? 'compact' : 'full';
+}
+
+function getVisibleResultCount(terminalHeight: number, state: Pick<TuiState, 'layout' | 'mode' | 'results' | 'selectedIndex'>): number {
+  const hasSelection = Boolean(state.results[state.selectedIndex]);
+  const reservedRows =
+    5 +
+    2 +
+    (state.mode === 'search' ? 4 : 0) +
+    (state.mode === 'output' ? 8 : 0) +
+    (state.layout === 'full' && hasSelection ? 5 : 0);
+  const visibleSectionGaps =
+    2 +
+    (state.mode === 'search' ? 1 : 0) +
+    (state.mode === 'output' ? 1 : 0) +
+    (state.layout === 'full' && hasSelection ? 1 : 0);
+  const resultPanelChrome = 4;
+  const availableRows = terminalHeight - reservedRows - visibleSectionGaps - resultPanelChrome;
+
+  return Math.max(minVisibleResultCount, Math.min(maxVisibleResultCount, availableRows));
 }
 
 function truncate(value: string, length: number): string {

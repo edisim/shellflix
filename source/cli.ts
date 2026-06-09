@@ -19,15 +19,15 @@ if (shouldLaunchOpenTui(pastelArgs, process.env, process.stdin, process.stdout) 
     }
   });
 
-  process.exit(result.status ?? 1);
+  process.exitCode = result.status ?? 1;
+} else {
+  setForwardedWebtorrentOptions(webtorrentOptions);
+
+  const app = new Pastel({
+    importMeta: import.meta,
+    name: 'shellflix',
+    description: 'Find and stream legal torrents from a modern terminal UI.'
+  });
+
+  await app.run([process.argv[0] ?? 'node', process.argv[1] ?? 'shellflix', ...pastelArgs]);
 }
-
-setForwardedWebtorrentOptions(webtorrentOptions);
-
-const app = new Pastel({
-  importMeta: import.meta,
-  name: 'shellflix',
-  description: 'Find and stream legal torrents from a modern terminal UI.'
-});
-
-await app.run([process.argv[0] ?? 'node', process.argv[1] ?? 'shellflix', ...pastelArgs]);

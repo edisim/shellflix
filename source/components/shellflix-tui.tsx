@@ -49,7 +49,7 @@ export function ShellflixTui({state, locale = resolveSystemLocale()}: Props) {
         </Box>
       ) : null}
 
-      <Text color="gray">{buildFooterContent(state.mode)}</Text>
+      <Text color="gray">{buildFooterContent(state.mode, state.layout)}</Text>
     </Box>
   );
 }

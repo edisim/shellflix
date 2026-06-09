@@ -23,17 +23,18 @@ describe('OpenTUI copy', () => {
   });
 
   it('only shows shortcuts that are available in the current mode', () => {
-    expect(buildFooterContent('search')).toBe('Enter search · Esc Esc quit · Ctrl+C Ctrl+C quit');
+    expect(buildFooterContent('search')).toBe('Type query · Enter search · Esc quit · Ctrl+C quit');
     expect(buildFooterContent('search')).not.toContain('provider');
     expect(buildFooterContent('search')).not.toContain('output');
     expect(buildFooterContent('idle')).toContain('p provider');
     expect(buildFooterContent('idle')).toContain('o output');
-    expect(buildFooterContent('output')).toBe('↑/↓ choose · Enter save · Esc search · Esc Esc quit · Ctrl+C Ctrl+C quit');
+    expect(buildFooterContent('idle', 'compact')).toContain('\n');
+    expect(buildFooterContent('output')).toBe('↑/↓ choose · Enter save · Esc quit · Ctrl+C quit');
   });
 
   it('keeps empty-state text out of the header/status role', () => {
-    expect(buildEmptyResultsText('search', 'Search mode.')).toBe('Results will appear here.');
+    expect(buildEmptyResultsText('search', 'Search mode.')).toBe('Type a query above, then press Enter.');
     expect(buildEmptyResultsText('idle', 'Searching 1337x...')).toBe('Waiting for provider response...');
-    expect(buildEmptyResultsText('idle', 'No torrents found.')).toBe('No matching torrents to show.');
+    expect(buildEmptyResultsText('idle', 'No torrents found.')).toBe('No matching torrents. Try another query or provider.');
   });
 });
