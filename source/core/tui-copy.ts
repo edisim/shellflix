@@ -43,18 +43,18 @@ export function buildFooterContent(mode: TuiMode, layout: TuiLayout = 'full', st
 
   if (mode === 'streaming') {
     return streamActive
-      ? 'x stop stream · / search · ↑/↓ select\nEnter start selected · Esc quit · Ctrl+C quit'
+      ? 'x stop stream · / search · ↑/↓ select\nEsc quit · Ctrl+C quit'
       : 'r restart · / search · ↑/↓ select\nEnter start selected · Esc quit · Ctrl+C quit';
   }
 
   if (layout === 'compact') {
     return streamActive
-      ? '↑/↓ select · Enter stream · / search · x stop stream\np provider · s subtitles · o output · Esc quit'
+      ? '↑/↓ select · / search · x stop stream\np provider · s subtitles · o output · Esc quit'
       : '↑/↓ select · Enter stream · / search · Esc quit\np provider · s subtitles · o output · Ctrl+C quit';
   }
 
   return streamActive
-    ? '↑/↓ select · Enter stream · / search · p provider · s subtitles · o output\nx stop stream · Esc quit · Ctrl+C quit'
+    ? '↑/↓ select · / search · p provider · s subtitles · o output\nx stop stream · Esc quit · Ctrl+C quit'
     : '↑/↓ select · Enter stream · / search · p provider · s subtitles · o output\nEsc quit · Ctrl+C quit';
 }
 

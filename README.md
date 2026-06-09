@@ -55,9 +55,10 @@ shellflix -- --iina --pip
 
 ## TUI Controls
 
-- Search mode: `Enter` search, `Esc` twice or `Ctrl+C` twice quit
-- Results mode: `Enter` stream, `Esc` search, `p` cycle provider, `s` toggle subtitles, `o` choose output app
-- Output mode: `↑/↓` choose, `Enter` save to `~/.shellflix.json`, `Esc` search
+- Search mode: `Enter` search, `Esc` or `Ctrl+C` quit
+- Results mode: `Enter` stream, `/` search, `p` cycle provider, `s` toggle subtitles, `o` choose output app, `Esc`/`Ctrl+C` quit
+- Output mode: `↑/↓` choose, `Enter` save to `~/.shellflix.json`, `Esc` quit
+- Active stream: `x` stop, `/` search, `↑/↓` select another result; stop the current stream before starting another one
 
 The interface is keyboard-first, keeps stable columns for scanning, and shows provider/timeout state instead of silently hanging.
 

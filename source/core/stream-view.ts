@@ -7,6 +7,7 @@ export type StreamViewRequest = {
 };
 
 export type StreamViewTone = 'starting' | 'running' | 'stopped' | 'failed';
+type StreamViewPhase = 'starting' | 'metadata' | 'preparing' | 'ready' | 'stopping' | 'stopped' | 'failed';
 
 export type StreamViewModel = {
   label: string;
@@ -17,72 +18,137 @@ export type StreamViewModel = {
   activity: string;
 };
 
-export function buildStreamView(snapshot: TorrentStreamSnapshot, request: StreamViewRequest | undefined, fallbackOutput: string, width = 80): StreamViewModel {
-  const tone = getStreamTone(snapshot.status);
+export type StreamViewOptions = {
+  stopping?: boolean;
+};
+
+export function buildStreamView(snapshot: TorrentStreamSnapshot, request: StreamViewRequest | undefined, fallbackOutput: string, width = 80, options: StreamViewOptions = {}): StreamViewModel {
+  const phase = getStreamPhase(snapshot, options);
+  const tone = getStreamTone(phase);
   const title = truncateTerminal(request?.title ?? 'Selected stream', getTitleWidth(width));
   const output = request?.output ?? fallbackOutput;
 
   return {
-    label: getStreamLabel(snapshot.status),
+    label: getStreamLabel(phase),
     tone,
-    status: buildStreamStatus(snapshot.status, title, output),
+    status: buildStreamStatus(phase, title, output),
     body: `${title} · Output ${output}`,
-    controls: buildStreamControls(snapshot.status),
-    activity: buildStreamActivity(snapshot, width)
+    controls: buildStreamControls(phase),
+    activity: phase === 'stopping'
+      ? truncateTerminal('Waiting for stream to stop...', Math.max(24, width))
+      : buildStreamActivity(snapshot, width)
   };
 }
 
-function getStreamTone(status: TorrentStreamStatus): StreamViewTone {
-  if (status === 'failed') {
+function getStreamPhase(snapshot: TorrentStreamSnapshot, options: StreamViewOptions): StreamViewPhase {
+  if (snapshot.status === 'failed') {
     return 'failed';
   }
 
-  if (status === 'running') {
+  if (snapshot.status === 'stopped') {
+    return 'stopped';
+  }
+
+  if (options.stopping) {
+    return 'stopping';
+  }
+
+  const latest = getLatestUserFacingLog(snapshot.log)?.toLowerCase() ?? '';
+
+  if (latest.includes('streaming to:') || latest.includes('server running at:')) {
+    return 'ready';
+  }
+
+  if (latest.includes('verifying existing torrent data')) {
+    return 'preparing';
+  }
+
+  if (latest.includes('fetching torrent metadata')) {
+    return 'metadata';
+  }
+
+  return 'starting';
+}
+
+function getStreamTone(phase: StreamViewPhase): StreamViewTone {
+  if (phase === 'failed') {
+    return 'failed';
+  }
+
+  if (phase === 'ready') {
     return 'running';
   }
 
-  if (status === 'stopped') {
+  if (phase === 'stopped') {
     return 'stopped';
   }
 
   return 'starting';
 }
 
-function getStreamLabel(status: TorrentStreamStatus): string {
-  if (status === 'running') {
+function getStreamLabel(phase: StreamViewPhase): string {
+  if (phase === 'ready') {
     return 'PLAYING';
   }
 
-  if (status === 'failed') {
+  if (phase === 'metadata') {
+    return 'CONNECTING';
+  }
+
+  if (phase === 'preparing') {
+    return 'PREPARING';
+  }
+
+  if (phase === 'stopping') {
+    return 'STOPPING';
+  }
+
+  if (phase === 'failed') {
     return 'ATTENTION';
   }
 
-  return status.toUpperCase();
+  return phase.toUpperCase();
 }
 
-function buildStreamStatus(status: TorrentStreamStatus, title: string, output: string): string {
-  if (status === 'running') {
+function buildStreamStatus(phase: StreamViewPhase, title: string, output: string): string {
+  if (phase === 'ready') {
     return `Streaming ${title}. Press x to stop or / to search.`;
   }
 
-  if (status === 'failed') {
+  if (phase === 'metadata') {
+    return `Finding peers for ${title}. Press x to stop.`;
+  }
+
+  if (phase === 'preparing') {
+    return `Preparing ${title} for ${output}...`;
+  }
+
+  if (phase === 'failed') {
     return 'Stream failed. Press r to retry or choose another result.';
   }
 
-  if (status === 'stopped') {
+  if (phase === 'stopping') {
+    return 'Stopping stream...';
+  }
+
+  if (phase === 'stopped') {
     return 'Stream stopped. Press r to restart.';
   }
 
-  return `Opening ${title} in ${output}...`;
+  return `Preparing ${title} for ${output}...`;
 }
 
-function buildStreamControls(status: TorrentStreamStatus): string {
-  if (status === 'stopped') {
+function buildStreamControls(phase: StreamViewPhase): string {
+  if (phase === 'stopped') {
     return 'r restart · Enter start selected · / search';
   }
 
-  if (status === 'failed') {
+  if (phase === 'failed') {
     return 'r retry · Enter start selected · / search';
+  }
+
+  if (phase === 'stopping') {
+    return 'Waiting for stream to stop';
   }
 
   return 'x stop · / search · ↑/↓ select another';
@@ -125,6 +191,14 @@ function formatLogLine(line: string): string {
 
   if (metadataMatch) {
     return `Fetching torrent metadata (${metadataMatch[1]} peers)...`;
+  }
+
+  if (/^verifying existing torrent data/i.test(trimmed)) {
+    return 'Verifying existing torrent data...';
+  }
+
+  if (/streaming to:/i.test(trimmed) || /server running at:/i.test(trimmed)) {
+    return 'Player connected. Stream server is ready.';
   }
 
   return trimmed;

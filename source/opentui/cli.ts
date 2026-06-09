@@ -92,6 +92,8 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
   let streamSession: TorrentStreamSession | undefined;
   let streamSnapshot: TorrentStreamSnapshot | undefined;
   let streamPending = false;
+  let streamStopping = false;
+  let searchRequestId = 0;
   let lastStreamRequest: {torrent: string; title: string; output: string} | undefined;
 
   const app = new BoxRenderable(renderer, {
@@ -369,8 +371,8 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
   function renderState(): void {
     const selected = state.results[state.selectedIndex];
 
-    const streamActive = streamPending || Boolean(streamSession?.isActive());
-    const streamView = streamSnapshot ? buildStreamView(streamSnapshot, lastStreamRequest, state.output, Math.max(24, renderer.width - 6)) : undefined;
+    const streamActive = isStreamActive();
+    const streamView = streamSnapshot ? buildStreamView(streamSnapshot, lastStreamRequest, state.output, Math.max(24, renderer.width - 6), {stopping: isStreamStopping()}) : undefined;
 
     title.content = buildHeaderTitle(state.mode, streamView);
     meta.content = buildOpenTuiMeta(state);
@@ -431,31 +433,41 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       ? 'Ctrl+X stop · Enter search · Esc quit'
       : streamView?.controls ?? '';
     streamLog.content = streamView?.activity ?? '';
-    footer.content = buildFooterContent(state.mode, state.layout, streamActive);
+    footer.content = isStreamStopping()
+      ? 'Waiting for stream to stop · Esc quit · Ctrl+C quit'
+      : buildFooterContent(state.mode, state.layout, streamActive);
 
     renderer.root.requestRender();
   }
 
   async function runSearch(queryValue: string): Promise<void> {
-    setState({...state, query: queryValue, mode: 'idle', status: `Searching ${state.provider}...`, results: [], selectedIndex: 0});
+    const requestId = searchRequestId + 1;
+    searchRequestId = requestId;
+    const provider = state.provider;
+
+    setState({...state, query: queryValue, mode: 'idle', status: `Searching ${provider}...`, results: [], selectedIndex: 0});
 
     const result = await searchProviders({
       query: queryValue,
       providers: activeConfig.torrents.providers.available,
-      activeProvider: state.provider,
+      activeProvider: provider,
       limit: activeConfig.torrents.limit,
       timeoutMs: activeConfig.torrents.timeout,
       adapter: torrentSearchAdapter
     });
     const lastAttempt = result.attempts.at(-1);
 
+    if (requestId !== searchRequestId) {
+      return;
+    }
+
     setState({
       ...state,
-      provider: lastAttempt?.provider ?? state.provider,
+      provider: lastAttempt?.provider ?? provider,
       results: result.results,
       selectedIndex: 0,
       status: result.results.length > 0
-        ? `Found ${result.results.length} result(s) via ${lastAttempt?.provider ?? state.provider}`
+        ? `Found ${result.results.length} result(s) via ${lastAttempt?.provider ?? provider}`
         : 'No torrents found. Press / to search again or p to change provider.'
     });
   }
@@ -494,10 +506,11 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     lastStreamRequest = request;
     streamSnapshot = undefined;
     streamPending = true;
+    streamStopping = false;
     setState({
       ...state,
       mode: 'streaming',
-      status: `Opening ${truncateTerminal(request.title, 42)} in ${request.output}...`
+      status: `Preparing ${truncateTerminal(request.title, 42)} for ${request.output}...`
     });
     streamSession = startTorrentStream({
       torrent: request.torrent,
@@ -509,15 +522,17 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       onUpdate: snapshot => {
         streamSnapshot = snapshot;
         streamPending = snapshot.status === 'starting' || snapshot.status === 'running';
+        streamStopping = streamStopping && streamPending;
 
         if (didQuit) {
           return;
         }
 
+        const nextStreamView = buildStreamView(snapshot, lastStreamRequest, state.output, Math.max(24, renderer.width - 6), {stopping: isStreamStopping()});
         state = {
           ...state,
           mode: snapshot.status === 'failed' ? 'error' : 'streaming',
-          status: buildStreamView(snapshot, lastStreamRequest, state.output, Math.max(24, renderer.width - 6)).status
+          status: nextStreamView.status
         };
         renderState();
       }
@@ -530,11 +545,17 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       return;
     }
 
+    streamStopping = true;
     streamSession.stop();
     setState({...state, mode: 'streaming', status: 'Stopping stream...'});
   }
 
   function restartStream(): void {
+    if (isStreamActive()) {
+      setState({...state, status: 'Stop the current stream before restarting.'});
+      return;
+    }
+
     if (!lastStreamRequest) {
       setState({...state, status: 'No previous stream to restart.'});
       return;
@@ -665,6 +686,11 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     }
 
     if (key.name === 'return') {
+      if (isStreamActive()) {
+        setState({...state, status: 'Stop the current stream before starting another result.'});
+        return;
+      }
+
       if (!canStreamSelectedResult(state)) {
         setState(reduceTuiState(state, {type: 'keyboard', key: 'return'}));
         return;
@@ -681,6 +707,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     }
 
     if (key.sequence === 'p') {
+      searchRequestId += 1;
       setState(cycleProvider(state, activeConfig));
       return;
     }
@@ -694,6 +721,14 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       openOutputMenu();
     }
   });
+
+  function isStreamActive(): boolean {
+    return streamPending || Boolean(streamSession?.isActive());
+  }
+
+  function isStreamStopping(): boolean {
+    return streamStopping && isStreamActive();
+  }
 
   renderer.on(CliRenderEvents.RESIZE, () => {
     setState({
