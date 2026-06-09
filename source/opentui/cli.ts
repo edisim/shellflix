@@ -17,6 +17,7 @@ import {formatResultMetaColumns} from '../core/result-format.js';
 import {isSearchableTorrentResult, searchProviders} from '../core/search.js';
 import {torrentSearchAdapter} from '../core/search-adapter.js';
 import {streamTorrent} from '../core/stream.js';
+import {resolveSystemLocale} from '../core/system-locale.js';
 import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchInputContent} from '../core/tui-copy.js';
 import {canStreamSelectedResult, createInitialTuiState, getExitIntent, reduceTuiState, type ExitIntent, type TuiState} from '../core/tui-state.js';
 import type {ShellflixConfig, TorrentResult} from '../core/types.js';
@@ -25,6 +26,7 @@ const rawArgs = process.argv.slice(2);
 const {pastelArgs, webtorrentOptions} = splitShellflixArgs(rawArgs);
 const parsed = parseShellflixCliArgs(pastelArgs);
 const config = withCliOptions(loadConfig(), parsed);
+const locale = resolveSystemLocale();
 const visibleResultCount = 6;
 const colors = {
   border: '#666666',
@@ -372,7 +374,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
 
       const rowBg = selectedRow ? colors.selectedBg : colors.panelBg;
       row.line.bg = rowBg;
-      row.line.content = buildResultRow(result, selectedRow, state.layout);
+      row.line.content = buildResultRow(result, selectedRow, state.layout, locale);
     }
 
     details.visible = state.layout === 'full' && Boolean(selected);
@@ -642,8 +644,8 @@ function buildResultsLegend(layout: TuiState['layout']): StyledText {
   ]);
 }
 
-function buildResultRow(result: TorrentResult, selected: boolean, layout: TuiState['layout']): StyledText {
-  const columns = formatResultMetaColumns(result);
+function buildResultRow(result: TorrentResult, selected: boolean, layout: TuiState['layout'], locale: string): StyledText {
+  const columns = formatResultMetaColumns(result, {locale});
   const titleWidth = layout === 'compact' ? 28 : 48;
   const providerWidth = layout === 'compact' ? 10 : 14;
   const age = layout === 'compact' ? '' : `  ${truncate(columns.age, 28)}`;

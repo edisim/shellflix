@@ -10,6 +10,7 @@ import {getOutputChoices} from '../core/output.js';
 import {isSearchableTorrentResult, searchProviders} from '../core/search.js';
 import {torrentSearchAdapter} from '../core/search-adapter.js';
 import {streamTorrent} from '../core/stream.js';
+import {resolveSystemLocale} from '../core/system-locale.js';
 import {canStreamSelectedResult, createInitialTuiState, getExitIntent, reduceTuiState, type ExitIntent, type TuiState} from '../core/tui-state.js';
 import type {ShellflixConfig, TorrentResult} from '../core/types.js';
 import {getForwardedWebtorrentOptions} from '../runtime.js';
@@ -50,6 +51,7 @@ type Props = {
 
 export default function IndexCommand(props: Props) {
   const config = useMemo(() => withCliOptions(loadConfig(), props.options), [props.options]);
+  const locale = useMemo(() => resolveSystemLocale(), []);
   const initialQuery = props.args.join(' ').trim();
   const canPrompt = Boolean(process.stdin.isTTY);
   const canRenderTui = Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -275,7 +277,7 @@ export default function IndexCommand(props: Props) {
 
   return (
     <Box flexDirection="column">
-      <ShellflixTui state={state} />
+      <ShellflixTui state={state} locale={locale} />
       {state.mode === 'search' ? (
         <Box marginTop={1}>
           <Text color="gray">Query </Text>

@@ -1,15 +1,18 @@
 import React from 'react';
 import {Box, Text} from 'ink';
 import {StatusMessage} from '@inkjs/ui';
+import {formatResultMetaColumns} from '../core/result-format.js';
+import {resolveSystemLocale} from '../core/system-locale.js';
 import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchInputContent} from '../core/tui-copy.js';
 import type {TuiState} from '../core/tui-state.js';
 import type {TorrentResult} from '../core/types.js';
 
 type Props = {
   state: TuiState;
+  locale?: string;
 };
 
-export function ShellflixTui({state}: Props) {
+export function ShellflixTui({state, locale = resolveSystemLocale()}: Props) {
   const selected = state.results[state.selectedIndex];
 
   return (
@@ -33,7 +36,7 @@ export function ShellflixTui({state}: Props) {
           <Text color="gray">{buildEmptyResultsText(state.mode, state.status)}</Text>
         ) : (
           state.results.slice(0, 10).map((result, index) => (
-            <ResultRow key={`${result.provider ?? 'provider'}-${result.title}-${index}`} result={result} selected={index === state.selectedIndex} compact={state.layout === 'compact'} />
+            <ResultRow key={`${result.provider ?? 'provider'}-${result.title}-${index}`} result={result} selected={index === state.selectedIndex} compact={state.layout === 'compact'} locale={locale} />
           ))
         )}
       </Box>
@@ -51,11 +54,18 @@ export function ShellflixTui({state}: Props) {
   );
 }
 
-function ResultRow({result, selected, compact}: {result: TorrentResult; selected: boolean; compact: boolean}) {
+function ResultRow({result, selected, compact, locale}: {result: TorrentResult; selected: boolean; compact: boolean; locale: string}) {
   const cursor = selected ? '›' : ' ';
+  const columns = formatResultMetaColumns(result, {locale});
   const meta = compact
-    ? result.provider ?? ''
-    : [result.provider, formatNumber(result.seeds), formatNumber(result.peers), result.size, result.time].filter(Boolean).join('  ');
+    ? columns.provider
+    : [
+        columns.provider,
+        `S ${columns.seeders}`,
+        `L ${columns.leechers}`,
+        columns.size,
+        columns.age
+      ].filter(Boolean).join('  ');
 
   return (
     <Box>
@@ -72,8 +82,4 @@ function truncate(value: string, length: number): string {
   }
 
   return `${value.slice(0, length - 1)}…`;
-}
-
-function formatNumber(value: unknown): string {
-  return typeof value === 'number' ? String(value) : '';
 }

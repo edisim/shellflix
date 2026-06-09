@@ -1,4 +1,5 @@
 import type {TorrentResult} from './types.js';
+import {resolveSystemLocale} from './system-locale.js';
 
 export type ResultFormatOptions = {
   locale?: string;
@@ -14,12 +15,14 @@ export type ResultMetaColumns = {
 };
 
 export function formatResultMetaColumns(result: TorrentResult, options: ResultFormatOptions = {}): ResultMetaColumns {
+  const locale = options.locale ?? resolveSystemLocale();
+
   return {
     provider: String(result.provider ?? 'unknown'),
-    seeders: formatNumber(result.seeds),
-    leechers: formatNumber(result.peers),
-    size: String(result.size ?? 'unknown'),
-    age: formatTorrentAge(result.time, options)
+    seeders: formatNumber(result.seeds, locale),
+    leechers: formatNumber(result.peers, locale),
+    size: formatSize(result.size, locale),
+    age: formatTorrentAge(result.time, {...options, locale})
   };
 }
 
@@ -46,19 +49,51 @@ export function formatTorrentAge(value: unknown, options: ResultFormatOptions = 
     return String(value);
   }
 
-  const locale = options.locale;
+  const locale = options.locale ?? resolveSystemLocale();
   const relative = formatRelativeDate(date, options.now ?? new Date(), locale);
   const localDate = new Intl.DateTimeFormat(locale, {
-    year: '2-digit',
-    month: '2-digit',
-    day: '2-digit'
+    dateStyle: 'short'
   }).format(date);
 
   return `${relative} (${localDate})`;
 }
 
-function formatNumber(value: unknown): string {
-  return typeof value === 'number' ? String(value) : '0';
+function formatNumber(value: unknown, locale: string): string {
+  return typeof value === 'number' ? normalizeNumberGroupSeparators(new Intl.NumberFormat(locale).format(value), locale) : '0';
+}
+
+function formatSize(value: unknown, locale: string): string {
+  if (typeof value !== 'string') {
+    return 'unknown';
+  }
+
+  const trimmed = value.trim();
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([a-zA-Z]+)$/);
+
+  if (!match) {
+    return trimmed;
+  }
+
+  const [, rawNumber, unit] = match;
+  const numericValue = Number(rawNumber.replace(',', '.'));
+
+  if (!Number.isFinite(numericValue)) {
+    return trimmed;
+  }
+
+  const fractionDigits = rawNumber.includes('.') || rawNumber.includes(',')
+    ? rawNumber.split(/[.,]/)[1]?.length ?? 0
+    : 0;
+  const number = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits
+  }).format(numericValue);
+
+  return `${normalizeNumberGroupSeparators(number, locale)} ${unit}`;
+}
+
+function normalizeNumberGroupSeparators(value: string, locale: string): string {
+  return locale.toLowerCase().startsWith('de') ? value.replace(/[\s\u00a0\u202f]/g, '.') : value;
 }
 
 function padColumn(value: string, width: number): string {
