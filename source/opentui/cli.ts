@@ -18,6 +18,7 @@ import {isSearchableTorrentResult, searchProviders} from '../core/search.js';
 import {torrentSearchAdapter} from '../core/search-adapter.js';
 import {startTorrentStream, type TorrentStreamSession, type TorrentStreamSnapshot} from '../core/stream.js';
 import {resolveSystemLocale} from '../core/system-locale.js';
+import {padTerminalEnd, truncateTerminal} from '../core/terminal-width.js';
 import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchHintContent, buildSearchInputContent} from '../core/tui-copy.js';
 import {canStreamSelectedResult, createInitialTuiState, getExitIntent, reduceTuiState, type ExitIntent, type TuiState} from '../core/tui-state.js';
 import type {ShellflixConfig, TorrentResult} from '../core/types.js';
@@ -355,7 +356,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
 
       row.content = new StyledText([
         resultChunk(selected ? '> ' : '  ', selected ? '#ffffff' : colors.muted, selected),
-        resultChunk(padColumn(output, 14), selected ? '#ffffff' : colors.text, selected),
+        resultChunk(padTerminalEnd(output, 14), selected ? '#ffffff' : colors.text, selected),
         resultChunk(current ? ' current' : '', colors.info, selected)
       ]);
     }
@@ -488,7 +489,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     setState({
       ...state,
       mode: 'streaming',
-      status: `Starting WebTorrent for ${truncate(request.title, 42)}...`
+      status: `Starting WebTorrent for ${truncateTerminal(request.title, 42)}...`
     });
     streamSession = startTorrentStream({
       torrent: request.torrent,
@@ -802,7 +803,7 @@ function buildStreamTitle(snapshot: TorrentStreamSnapshot): StyledText {
 }
 
 function buildStreamStatus(snapshot: TorrentStreamSnapshot, request: {title: string; output: string} | undefined): string {
-  const title = request ? truncate(request.title, 42) : 'WebTorrent';
+  const title = request ? truncateTerminal(request.title, 42) : 'WebTorrent';
 
   if (snapshot.status === 'running') {
     return `Streaming ${title}. WebTorrent is controlled from Shellflix.`;
@@ -821,7 +822,7 @@ function buildStreamStatus(snapshot: TorrentStreamSnapshot, request: {title: str
 
 function buildStreamBody(snapshot: TorrentStreamSnapshot, request: {title: string; output: string} | undefined, output: string): string {
   const context = [
-    request ? truncate(request.title, 54) : 'No active torrent',
+    request ? truncateTerminal(request.title, 54) : 'No active torrent',
     `Output ${request?.output ?? output}`
   ];
 
@@ -846,21 +847,21 @@ function buildResultRow(result: TorrentResult, selected: boolean, layout: TuiSta
   const columns = formatResultMetaColumns(result, {locale});
   const titleWidth = layout === 'compact' ? 30 : 50;
   const providerWidth = layout === 'compact' ? 10 : 14;
-  const age = layout === 'compact' ? '' : `  ${truncate(columns.age, 28)}`;
+  const age = layout === 'compact' ? '' : `  ${truncateTerminal(columns.age, 28)}`;
 
   return new StyledText([
     resultChunk(selected ? '> ' : '  ', selected ? '#ffffff' : colors.muted, selected),
-    resultChunk(padColumn(truncate(result.title, titleWidth), titleWidth), selected ? '#ffffff' : colors.text, selected),
+    resultChunk(padTerminalEnd(truncateTerminal(result.title, titleWidth), titleWidth), selected ? '#ffffff' : colors.text, selected),
     resultChunk('  ', colors.muted, selected),
-    resultChunk(padColumn(truncate(columns.provider, providerWidth), providerWidth), colors.muted, selected),
+    resultChunk(padTerminalEnd(truncateTerminal(columns.provider, providerWidth), providerWidth), colors.muted, selected),
     resultChunk('  ', colors.muted, selected),
     resultChunk('S ', colors.seeders, selected),
-    resultChunk(padColumn(columns.seeders, 4), colors.seeders, selected),
+    resultChunk(padTerminalEnd(columns.seeders, 4), colors.seeders, selected),
     resultChunk('  ', colors.muted, selected),
     resultChunk('L ', colors.leechers, selected),
-    resultChunk(padColumn(columns.leechers, 4), colors.leechers, selected),
+    resultChunk(padTerminalEnd(columns.leechers, 4), colors.leechers, selected),
     resultChunk('  ', colors.muted, selected),
-    resultChunk(padColumn(columns.size, 9), colors.size, selected),
+    resultChunk(padTerminalEnd(columns.size, 9), colors.size, selected),
     resultChunk(age, colors.age, selected)
   ]);
 }
@@ -868,10 +869,6 @@ function buildResultRow(result: TorrentResult, selected: boolean, layout: TuiSta
 function resultChunk(text: string, color: string, selected: boolean): TextChunk {
   const chunk = fg(color)(text);
   return selected ? bg(colors.selectedBg)(chunk) : chunk;
-}
-
-function padColumn(value: string, width: number): string {
-  return value.length >= width ? value : value.padEnd(width, ' ');
 }
 
 function getVisibleResultStart(selectedIndex: number, resultCount: number, visibleCount: number): number {
@@ -919,13 +916,6 @@ function getVisibleResultCount(terminalHeight: number, state: Pick<TuiState, 'la
   return Math.max(minVisibleResultCount, Math.min(maxVisibleResultCount, availableRows));
 }
 
-function truncate(value: string, length: number): string {
-  if (value.length <= length) {
-    return value;
-  }
-
-  return `${value.slice(0, length - 1)}…`;
-}
 
 function isTorrentIdentifier(value: string): boolean {
   return value.startsWith('magnet:') || value.startsWith('http://') || value.startsWith('https://') || value.endsWith('.torrent');

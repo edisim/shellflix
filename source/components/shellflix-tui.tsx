@@ -3,6 +3,7 @@ import {Box, Text} from 'ink';
 import {StatusMessage} from '@inkjs/ui';
 import {formatResultMetaColumns} from '../core/result-format.js';
 import {resolveSystemLocale} from '../core/system-locale.js';
+import {truncateTerminal} from '../core/terminal-width.js';
 import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchHintContent, buildSearchInputContent} from '../core/tui-copy.js';
 import type {TuiState} from '../core/tui-state.js';
 import type {TorrentResult} from '../core/types.js';
@@ -70,17 +71,9 @@ function ResultRow({result, selected, compact, locale}: {result: TorrentResult; 
 
   return (
     <Box>
-      <Text color={selected ? 'cyan' : undefined}>{cursor} {truncate(result.title, compact ? 44 : 58)}</Text>
+      <Text color={selected ? 'cyan' : undefined}>{cursor} {truncateTerminal(result.title, compact ? 44 : 58)}</Text>
       <Box flexGrow={1} />
       <Text color="gray">{meta}</Text>
     </Box>
   );
-}
-
-function truncate(value: string, length: number): string {
-  if (value.length <= length) {
-    return value;
-  }
-
-  return `${value.slice(0, length - 1)}…`;
 }

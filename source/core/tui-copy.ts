@@ -1,4 +1,5 @@
 import type {TuiLayout, TuiMode, TuiState} from './tui-state.js';
+import {truncateTerminal} from './terminal-width.js';
 
 export function buildOpenTuiTitle(): string {
   return 'Shellflix';
@@ -13,7 +14,7 @@ export function buildOpenTuiMeta(state: Pick<TuiState, 'provider' | 'output' | '
   ];
 
   if (query) {
-    context.push(`Query "${truncate(query, 48)}"`);
+    context.push(`Query "${truncateTerminal(query, 48)}"`);
   }
 
   return context.join(' · ');
@@ -65,12 +66,4 @@ export function buildEmptyResultsText(mode: TuiMode, status: string): string {
   }
 
   return 'No matching torrents. Try another query or provider.';
-}
-
-function truncate(value: string, length: number): string {
-  if (value.length <= length) {
-    return value;
-  }
-
-  return `${value.slice(0, length - 1)}…`;
 }

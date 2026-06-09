@@ -1,5 +1,6 @@
 import type {TorrentResult} from './types.js';
 import {resolveSystemLocale} from './system-locale.js';
+import {padTerminalEnd} from './terminal-width.js';
 
 export type ResultFormatOptions = {
   locale?: string;
@@ -97,7 +98,7 @@ function normalizeNumberGroupSeparators(value: string, locale: string): string {
 }
 
 function padColumn(value: string, width: number): string {
-  return value.length >= width ? value : value.padEnd(width, ' ');
+  return padTerminalEnd(value, width);
 }
 
 function formatRelativeDate(date: Date, now: Date, locale?: string): string {
