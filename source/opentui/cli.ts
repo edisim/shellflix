@@ -17,6 +17,7 @@ import {formatResultMetaColumns} from '../core/result-format.js';
 import {isSearchableTorrentResult, searchProviders} from '../core/search.js';
 import {torrentSearchAdapter} from '../core/search-adapter.js';
 import {startTorrentStream, type TorrentStreamSession, type TorrentStreamSnapshot} from '../core/stream.js';
+import {buildStreamView, type StreamViewModel, type StreamViewTone} from '../core/stream-view.js';
 import {resolveSystemLocale} from '../core/system-locale.js';
 import {padTerminalEnd, truncateTerminal} from '../core/terminal-width.js';
 import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchHintContent, buildSearchInputContent} from '../core/tui-copy.js';
@@ -90,6 +91,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
   let searchValue = state.query;
   let streamSession: TorrentStreamSession | undefined;
   let streamSnapshot: TorrentStreamSnapshot | undefined;
+  let streamPending = false;
   let lastStreamRequest: {torrent: string; title: string; output: string} | undefined;
 
   const app = new BoxRenderable(renderer, {
@@ -268,22 +270,24 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     content: '',
     fg: colors.secondary,
     width: '100%',
-    height: 1
+    height: 1,
+    truncate: true
   });
   const streamControls = new TextRenderable(renderer, {
     id: 'shellflix-stream-controls',
     content: 'x stop · r restart · / search · Enter start selected',
     fg: colors.muted,
     width: '100%',
-    height: 1
+    height: 1,
+    truncate: true
   });
   const streamLog = new TextRenderable(renderer, {
     id: 'shellflix-stream-log',
     content: '',
     fg: colors.muted,
     width: '100%',
-    height: 2,
-    wrapMode: 'word'
+    height: 1,
+    truncate: true
   });
   streamPanel.add(streamTitle);
   streamPanel.add(streamBody);
@@ -365,14 +369,17 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
   function renderState(): void {
     const selected = state.results[state.selectedIndex];
 
-    title.content = buildHeaderTitle(state.mode, Boolean(streamSession?.isActive()));
+    const streamActive = streamPending || Boolean(streamSession?.isActive());
+    const streamView = streamSnapshot ? buildStreamView(streamSnapshot, lastStreamRequest, state.output, Math.max(24, renderer.width - 6)) : undefined;
+
+    title.content = buildHeaderTitle(state.mode, streamView);
     meta.content = buildOpenTuiMeta(state);
     status.content = state.status;
-    status.fg = state.mode === 'error'
+    status.fg = streamView
+      ? getStreamToneColor(streamView.tone)
+      : state.mode === 'error'
       ? colors.error
-      : state.mode === 'streaming'
-        ? colors.seeders
-        : colors.info;
+      : colors.info;
 
     emptyResults.visible = state.results.length === 0;
     emptyResults.content = buildEmptyResultsText(state.mode, state.status);
@@ -416,15 +423,15 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     searchInput.content = buildSearchInputContent(searchValue);
     searchHint.visible = searchValue.trim().length === 0;
     streamPanel.visible = Boolean(streamSnapshot);
-    streamPanel.borderColor = streamSnapshot?.status === 'failed' ? colors.error : colors.info;
-    streamTitle.content = streamSnapshot ? buildStreamTitle(streamSnapshot) : '';
-    streamTitle.fg = streamSnapshot?.status === 'failed' ? colors.error : streamSnapshot?.status === 'running' ? colors.seeders : colors.text;
-    streamBody.content = streamSnapshot ? buildStreamBody(streamSnapshot, lastStreamRequest, state.output) : '';
-    streamControls.content = state.mode === 'search'
+    streamPanel.borderColor = streamView ? getStreamToneColor(streamView.tone) : colors.info;
+    streamTitle.content = streamView ? buildStreamTitle(streamView) : '';
+    streamTitle.fg = streamView ? getStreamToneColor(streamView.tone) : colors.text;
+    streamBody.content = streamView?.body ?? '';
+    streamControls.content = state.mode === 'search' && streamActive
       ? 'Ctrl+X stop · Enter search · Esc quit'
-      : 'x stop · r restart · / search · Enter start selected';
-    streamLog.content = streamSnapshot ? buildStreamLog(streamSnapshot) : '';
-    footer.content = buildFooterContent(state.mode, state.layout, Boolean(streamSession?.isActive()));
+      : streamView?.controls ?? '';
+    streamLog.content = streamView?.activity ?? '';
+    footer.content = buildFooterContent(state.mode, state.layout, streamActive);
 
     renderer.root.requestRender();
   }
@@ -486,10 +493,11 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     streamSession?.stop();
     lastStreamRequest = request;
     streamSnapshot = undefined;
+    streamPending = true;
     setState({
       ...state,
       mode: 'streaming',
-      status: `Starting WebTorrent for ${truncateTerminal(request.title, 42)}...`
+      status: `Opening ${truncateTerminal(request.title, 42)} in ${request.output}...`
     });
     streamSession = startTorrentStream({
       torrent: request.torrent,
@@ -500,6 +508,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       maxLogLines: 5,
       onUpdate: snapshot => {
         streamSnapshot = snapshot;
+        streamPending = snapshot.status === 'starting' || snapshot.status === 'running';
 
         if (didQuit) {
           return;
@@ -508,7 +517,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
         state = {
           ...state,
           mode: snapshot.status === 'failed' ? 'error' : 'streaming',
-          status: buildStreamStatus(snapshot, lastStreamRequest)
+          status: buildStreamView(snapshot, lastStreamRequest, state.output, Math.max(24, renderer.width - 6)).status
         };
         renderState();
       }
@@ -522,7 +531,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     }
 
     streamSession.stop();
-    setState({...state, mode: 'streaming', status: 'Stopping WebTorrent...'});
+    setState({...state, mode: 'streaming', status: 'Stopping stream...'});
   }
 
   function restartStream(): void {
@@ -777,9 +786,21 @@ function buildResultsLegend(layout: TuiState['layout']): StyledText {
   ]);
 }
 
-function buildHeaderTitle(mode: TuiState['mode'], streamActive: boolean): StyledText {
-  const label = streamActive ? 'STREAM' : mode === 'search' ? 'SEARCH' : mode === 'output' ? 'OUTPUT' : mode === 'error' ? 'ATTENTION' : 'RESULTS';
-  const labelColor = streamActive ? colors.seeders : mode === 'error' ? colors.error : colors.info;
+function buildHeaderTitle(mode: TuiState['mode'], streamView: StreamViewModel | undefined): StyledText {
+  const label = mode === 'search'
+    ? 'SEARCH'
+    : mode === 'output'
+      ? 'OUTPUT'
+      : streamView
+        ? 'STREAM'
+        : mode === 'error'
+          ? 'ATTENTION'
+          : 'RESULTS';
+  const labelColor = streamView && mode !== 'search' && mode !== 'output'
+    ? getStreamToneColor(streamView.tone)
+    : mode === 'error'
+      ? colors.error
+      : colors.info;
 
   return new StyledText([
     fg(colors.text)(buildOpenTuiTitle()),
@@ -788,59 +809,27 @@ function buildHeaderTitle(mode: TuiState['mode'], streamActive: boolean): Styled
   ]);
 }
 
-function buildStreamTitle(snapshot: TorrentStreamSnapshot): StyledText {
-  const label = snapshot.status === 'running'
-    ? 'RUNNING'
-    : snapshot.status === 'failed'
-      ? 'ATTENTION'
-      : snapshot.status.toUpperCase();
-  const labelColor = snapshot.status === 'failed' ? colors.error : snapshot.status === 'running' ? colors.seeders : colors.info;
-
+function buildStreamTitle(view: StreamViewModel): StyledText {
   return new StyledText([
     fg(colors.text)('Stream  '),
-    fg(labelColor)(label)
+    fg(getStreamToneColor(view.tone))(view.label)
   ]);
 }
 
-function buildStreamStatus(snapshot: TorrentStreamSnapshot, request: {title: string; output: string} | undefined): string {
-  const title = request ? truncateTerminal(request.title, 42) : 'WebTorrent';
-
-  if (snapshot.status === 'running') {
-    return `Streaming ${title}. WebTorrent is controlled from Shellflix.`;
+function getStreamToneColor(tone: StreamViewTone): string {
+  if (tone === 'failed') {
+    return colors.error;
   }
 
-  if (snapshot.status === 'failed') {
-    return `WebTorrent stopped unexpectedly${snapshot.exitCode === undefined ? '' : ` (${snapshot.exitCode ?? snapshot.signal ?? 'signal'})`}.`;
+  if (tone === 'running') {
+    return colors.seeders;
   }
 
-  if (snapshot.status === 'stopped') {
-    return `Stream stopped. Press r to restart ${title}.`;
+  if (tone === 'stopped') {
+    return colors.muted;
   }
 
-  return `Starting ${title}...`;
-}
-
-function buildStreamBody(snapshot: TorrentStreamSnapshot, request: {title: string; output: string} | undefined, output: string): string {
-  const context = [
-    request ? truncateTerminal(request.title, 54) : 'No active torrent',
-    `Output ${request?.output ?? output}`
-  ];
-
-  if (snapshot.pid) {
-    context.push(`PID ${snapshot.pid}`);
-  }
-
-  return context.join(' · ');
-}
-
-function buildStreamLog(snapshot: TorrentStreamSnapshot): string {
-  if (snapshot.log.length === 0) {
-    return snapshot.status === 'running'
-      ? 'Waiting for WebTorrent output...'
-      : 'No WebTorrent output yet.';
-  }
-
-  return snapshot.log.slice(-2).join('\n');
+  return colors.info;
 }
 
 function buildResultRow(result: TorrentResult, selected: boolean, layout: TuiState['layout'], locale: string): StyledText {

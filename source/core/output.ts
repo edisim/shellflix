@@ -32,15 +32,29 @@ export function outputToWebtorrentOption(output: string | undefined): string | u
 }
 
 export function withOutputWebtorrentOption(options: string[], output: string | undefined): string[] {
-  if (options.some(option => playerFlags.has(option.toLowerCase()))) {
-    return [...options];
-  }
-
+  const nextOptions = [...options];
+  const hasDynamicPlayer = nextOptions.some(option => playerFlags.has(option.toLowerCase()));
   const outputOption = outputToWebtorrentOption(output);
 
-  return outputOption ? [...options, outputOption] : [...options];
+  if (!hasDynamicPlayer && outputOption) {
+    nextOptions.push(outputOption);
+  }
+
+  if (usesIina(nextOptions) && !usesOption(nextOptions, '--pip') && !usesOption(nextOptions, '--not-on-top')) {
+    nextOptions.push('--not-on-top');
+  }
+
+  return nextOptions;
 }
 
 function uniqueValues(values: string[]): string[] {
   return [...new Set(values.filter(value => value.trim()))];
+}
+
+function usesIina(options: string[]): boolean {
+  return usesOption(options, '--iina');
+}
+
+function usesOption(options: string[], option: string): boolean {
+  return options.some(value => value.toLowerCase() === option);
 }

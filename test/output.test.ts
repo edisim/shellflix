@@ -20,7 +20,11 @@ describe('output selection', () => {
   });
 
   it('keeps explicitly forwarded player flags ahead of the TUI setting', () => {
-    expect(withOutputWebtorrentOption(['--iina'], 'VLC')).toEqual(['--iina']);
-    expect(withOutputWebtorrentOption(['--port', '1234'], 'IINA')).toEqual(['--port', '1234', '--iina']);
+    expect(withOutputWebtorrentOption(['--iina'], 'VLC')).toEqual(['--iina', '--not-on-top']);
+    expect(withOutputWebtorrentOption(['--port', '1234'], 'IINA')).toEqual(['--port', '1234', '--iina', '--not-on-top']);
+  });
+
+  it('preserves explicit IINA picture-in-picture requests', () => {
+    expect(withOutputWebtorrentOption(['--iina', '--pip'], 'VLC')).toEqual(['--iina', '--pip']);
   });
 });

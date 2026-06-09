@@ -49,6 +49,25 @@ describe('torrent stream session', () => {
 
     expect(killed).toEqual([{pid: -4242, signal: 'SIGTERM'}]);
   });
+
+  it('starts IINA without the helper defaulting to picture-in-picture', () => {
+    const child = createFakeChild();
+    const config = loadConfig({homeDir: '/Users/test', fileExists: () => false});
+
+    startTorrentStream({
+      torrent: 'magnet:?xt=urn:btih:test',
+      webtorrentOptions: [],
+      config,
+      output: 'IINA'
+    }, {
+      spawnProcess: (_file, args) => {
+        expect(args).toContain('--iina');
+        expect(args).toContain('--not-on-top');
+        expect(args).not.toContain('--pip');
+        return child;
+      }
+    });
+  });
 });
 
 function createFakeChild() {

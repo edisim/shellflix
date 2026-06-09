@@ -31,7 +31,9 @@ describe('OpenTUI copy', () => {
     expect(buildFooterContent('idle')).toContain('o output');
     expect(buildFooterContent('idle', 'compact')).toContain('\n');
     expect(buildFooterContent('output')).toBe('↑/↓ choose · Enter save · Esc quit · Ctrl+C quit');
-    expect(buildFooterContent('streaming')).toContain('x stop stream');
+    expect(buildFooterContent('streaming', 'full', true)).toContain('x stop stream');
+    expect(buildFooterContent('streaming', 'full', false)).not.toContain('x stop stream');
+    expect(buildFooterContent('streaming', 'full', false)).toContain('r restart');
     expect(buildFooterContent('search', 'compact', true)).toContain('Ctrl+X stop stream');
   });
 

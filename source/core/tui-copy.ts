@@ -42,7 +42,9 @@ export function buildFooterContent(mode: TuiMode, layout: TuiLayout = 'full', st
   }
 
   if (mode === 'streaming') {
-    return 'x stop stream · r restart · / search · ↑/↓ select\nEnter start selected · Esc quit · Ctrl+C quit';
+    return streamActive
+      ? 'x stop stream · / search · ↑/↓ select\nEnter start selected · Esc quit · Ctrl+C quit'
+      : 'r restart · / search · ↑/↓ select\nEnter start selected · Esc quit · Ctrl+C quit';
   }
 
   if (layout === 'compact') {
