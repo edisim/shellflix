@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {createInitialTuiState, reduceTuiState} from '../source/core/tui-state.js';
+import {canStreamSelectedResult, createInitialTuiState, reduceTuiState, shouldQuitFromInput} from '../source/core/tui-state.js';
 
 describe('tui state', () => {
   it('moves selection and enters search mode with keyboard actions', () => {
@@ -39,7 +39,7 @@ describe('tui state', () => {
     expect(reduceTuiState({...state, subtitleEnabled: true}, {type: 'keyboard', key: 's'}).subtitleEnabled).toBe(false);
     expect(reduceTuiState(state, {type: 'keyboard', key: 'o'}).mode).toBe('output');
     expect(reduceTuiState(state, {type: 'keyboard', key: 'return'}).mode).toBe('streaming');
-    expect(reduceTuiState(state, {type: 'keyboard', key: 'escape'}).status).toBe('Ready');
+    expect(reduceTuiState(state, {type: 'keyboard', key: 'escape'}).status).toBe('Cancelled');
     expect(reduceTuiState(state, {type: 'keyboard', key: 'x'})).toBe(state);
   });
 
@@ -50,5 +50,18 @@ describe('tui state', () => {
     expect(withResults.selectedIndex).toBe(0);
     expect(withResults.results).toHaveLength(1);
     expect(reduceTuiState(withResults, {type: 'setStatus', status: 'Done'}).status).toBe('Done');
+  });
+
+  it('only allows streaming when the selected result is searchable', () => {
+    expect(canStreamSelectedResult(createInitialTuiState({results: []}))).toBe(false);
+    expect(canStreamSelectedResult(createInitialTuiState({results: [{title: 'No results returned'}]}))).toBe(false);
+    expect(canStreamSelectedResult(createInitialTuiState({results: [{title: 'Sintel 1080p'}]}))).toBe(true);
+  });
+
+  it('recognizes escape and ctrl+c as quit input', () => {
+    expect(shouldQuitFromInput('', {escape: true})).toBe(true);
+    expect(shouldQuitFromInput('c', {ctrl: true})).toBe(true);
+    expect(shouldQuitFromInput('\u0003', {})).toBe(true);
+    expect(shouldQuitFromInput('c', {})).toBe(false);
   });
 });

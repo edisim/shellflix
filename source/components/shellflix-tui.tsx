@@ -49,7 +49,7 @@ export function ShellflixTui({state}: Props) {
         </Box>
       ) : null}
 
-      <Text color="gray">Enter stream · / search · p provider · s subtitles · o output · Esc back</Text>
+      <Text color="gray">Enter stream · / search · p provider · s subtitles · o output · Esc quit</Text>
     </Box>
   );
 }

@@ -6,10 +6,10 @@ import zod from 'zod';
 import {ShellflixTui} from '../components/shellflix-tui.js';
 import {loadConfig} from '../core/config.js';
 import {runClackFallback} from '../core/fallback.js';
-import {searchProviders} from '../core/search.js';
+import {isSearchableTorrentResult, searchProviders} from '../core/search.js';
 import {torrentSearchAdapter} from '../core/search-adapter.js';
 import {streamTorrent} from '../core/stream.js';
-import {createInitialTuiState, reduceTuiState, type TuiState} from '../core/tui-state.js';
+import {canStreamSelectedResult, createInitialTuiState, reduceTuiState, shouldQuitFromInput, type TuiState} from '../core/tui-state.js';
 import type {ShellflixConfig, TorrentResult} from '../core/types.js';
 import {getForwardedWebtorrentOptions} from '../runtime.js';
 
@@ -55,6 +55,7 @@ export default function IndexCommand(props: Props) {
   const {exit} = useApp();
   const {stdout} = useStdout();
   const didStart = useRef(false);
+  const quitCount = useRef(0);
   const [searchInput, setSearchInput] = useState(initialQuery);
   const [state, setState] = useState<TuiState>(() => createInitialTuiState({
     query: initialQuery,
@@ -90,7 +91,8 @@ export default function IndexCommand(props: Props) {
   }, [config]);
 
   const startSelectedStream = useCallback(async (torrent: TorrentResult | undefined) => {
-    if (!torrent) {
+    if (!isSearchableTorrentResult(torrent)) {
+      setState(current => ({...current, mode: 'idle', status: 'No streamable result selected. Press / to search again.'}));
       return;
     }
 
@@ -111,6 +113,26 @@ export default function IndexCommand(props: Props) {
     process.exitCode = status;
     exit();
   }, [config, exit]);
+
+  const quit = useCallback(() => {
+    quitCount.current += 1;
+    exit();
+
+    if (quitCount.current >= 1) {
+      process.exit(130);
+    }
+  }, [exit]);
+
+  useEffect(() => {
+    if (!canRenderTui) {
+      return;
+    }
+
+    process.on('SIGINT', quit);
+    return () => {
+      process.off('SIGINT', quit);
+    };
+  }, [canRenderTui, quit]);
 
   useEffect(() => {
     if (didStart.current) {
@@ -163,6 +185,11 @@ export default function IndexCommand(props: Props) {
   }, [canPrompt, canRenderTui, config, exit, initialQuery, runSearch, startSelectedStream]);
 
   useInput((input, key) => {
+    if (shouldQuitFromInput(input, key)) {
+      quit();
+      return;
+    }
+
     if (state.mode === 'search') {
       return;
     }
@@ -178,12 +205,12 @@ export default function IndexCommand(props: Props) {
     }
 
     if (key.return) {
-      void startSelectedStream(state.results[state.selectedIndex]);
-      return;
-    }
+      if (!canStreamSelectedResult(state)) {
+        setState(current => reduceTuiState(current, {type: 'keyboard', key: 'return'}));
+        return;
+      }
 
-    if (key.escape) {
-      setState(current => reduceTuiState(current, {type: 'keyboard', key: 'escape'}));
+      void startSelectedStream(state.results[state.selectedIndex]);
       return;
     }
 
@@ -279,4 +306,9 @@ async function runHeadlessQuery(
   });
 
   await startSelectedStream(result.results[0]);
+  if (!isSearchableTorrentResult(result.results[0])) {
+    console.error('No torrents found. Try another legal title or pass a magnet URI directly.');
+    process.exitCode = 1;
+    exit();
+  }
 }

@@ -41,10 +41,14 @@ export async function searchProviders(input: SearchProvidersInput): Promise<Sear
         `Search via "${provider}" timed out after ${input.timeoutMs}ms.`
       );
 
-      if (results.length > 0) {
+      const searchableResults = results
+        .filter(isSearchableTorrentResult)
+        .map(result => ({...result, provider: result.provider ?? provider}));
+
+      if (searchableResults.length > 0) {
         attempts.push({provider, status: 'success'});
         return {
-          results: results.map(result => ({...result, provider: result.provider ?? provider})),
+          results: searchableResults,
           attempts
         };
       }
@@ -69,6 +73,20 @@ export function orderProviders(providers: string[], activeProvider: string): str
 
   const start = providers.indexOf(activeProvider);
   return [...providers.slice(start), ...providers.slice(0, start)];
+}
+
+export function isSearchableTorrentResult(result: TorrentResult | undefined): result is TorrentResult {
+  const title = result?.title.trim();
+
+  if (!title) {
+    return false;
+  }
+
+  return ![
+    /^no results?(?: returned| found)?$/i,
+    /^nothing found$/i,
+    /^no torrents?(?: returned| found)?$/i
+  ].some(pattern => pattern.test(title));
 }
 
 export class TimeoutError extends Error {}

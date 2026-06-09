@@ -1,4 +1,5 @@
 import type {TorrentResult} from './types.js';
+import {isSearchableTorrentResult} from './search.js';
 
 export type TuiMode = 'idle' | 'search' | 'provider' | 'subtitles' | 'output' | 'streaming' | 'error';
 export type TuiLayout = 'full' | 'compact';
@@ -20,6 +21,11 @@ export type TuiAction =
   | {type: 'keyboard'; key: string}
   | {type: 'setResults'; results: TorrentResult[]}
   | {type: 'setStatus'; status: string};
+
+type KeyboardInput = {
+  ctrl?: boolean;
+  escape?: boolean;
+};
 
 type InitialStateInput = Partial<Omit<TuiState, 'layout'>> & {
   terminalWidth?: number;
@@ -58,6 +64,14 @@ export function reduceTuiState(state: TuiState, action: TuiAction): TuiState {
   }
 }
 
+export function canStreamSelectedResult(state: TuiState): boolean {
+  return isSearchableTorrentResult(state.results[state.selectedIndex]);
+}
+
+export function shouldQuitFromInput(input: string, key: KeyboardInput): boolean {
+  return Boolean(key.escape || (key.ctrl && input.toLowerCase() === 'c') || input === '\u0003');
+}
+
 function reduceKeyboard(state: TuiState, key: string): TuiState {
   if (key === '/') {
     return {...state, mode: 'search', status: 'Enter a new search query'};
@@ -76,10 +90,14 @@ function reduceKeyboard(state: TuiState, key: string): TuiState {
   }
 
   if (key === 'escape') {
-    return {...state, mode: 'idle', status: 'Ready'};
+    return {...state, mode: 'idle', status: 'Cancelled'};
   }
 
   if (key === 'return') {
+    if (!canStreamSelectedResult(state)) {
+      return {...state, mode: 'idle', status: 'No streamable result selected. Press / to search again.'};
+    }
+
     return {...state, mode: 'streaming', status: 'Starting stream'};
   }
 
