@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchInputContent} from '../source/core/tui-copy.js';
+import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchHintContent, buildSearchInputContent} from '../source/core/tui-copy.js';
 
 describe('OpenTUI copy', () => {
   it('keeps the header focused on product and runtime context', () => {
@@ -18,8 +18,9 @@ describe('OpenTUI copy', () => {
   });
 
   it('formats the active search field as an input instead of a status line', () => {
-    expect(buildSearchInputContent('')).toBe('> Sintel or magnet/torrent URL');
+    expect(buildSearchInputContent('')).toBe('> ');
     expect(buildSearchInputContent('Sintel')).toBe('> Sintel_');
+    expect(buildSearchHintContent()).toContain('Example: Sintel');
   });
 
   it('only shows shortcuts that are available in the current mode', () => {
@@ -30,6 +31,8 @@ describe('OpenTUI copy', () => {
     expect(buildFooterContent('idle')).toContain('o output');
     expect(buildFooterContent('idle', 'compact')).toContain('\n');
     expect(buildFooterContent('output')).toBe('↑/↓ choose · Enter save · Esc quit · Ctrl+C quit');
+    expect(buildFooterContent('streaming')).toContain('x stop stream');
+    expect(buildFooterContent('search', 'compact', true)).toContain('Ctrl+X stop stream');
   });
 
   it('keeps empty-state text out of the header/status role', () => {

@@ -16,9 +16,9 @@ import {getOutputChoices} from '../core/output.js';
 import {formatResultMetaColumns} from '../core/result-format.js';
 import {isSearchableTorrentResult, searchProviders} from '../core/search.js';
 import {torrentSearchAdapter} from '../core/search-adapter.js';
-import {streamTorrent} from '../core/stream.js';
+import {startTorrentStream, type TorrentStreamSession, type TorrentStreamSnapshot} from '../core/stream.js';
 import {resolveSystemLocale} from '../core/system-locale.js';
-import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchInputContent} from '../core/tui-copy.js';
+import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchHintContent, buildSearchInputContent} from '../core/tui-copy.js';
 import {canStreamSelectedResult, createInitialTuiState, getExitIntent, reduceTuiState, type ExitIntent, type TuiState} from '../core/tui-state.js';
 import type {ShellflixConfig, TorrentResult} from '../core/types.js';
 
@@ -59,11 +59,6 @@ type RunOpenTuiInput = {
 };
 
 async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
-  if (input.query && isTorrentIdentifier(input.query)) {
-    process.exitCode = streamTorrent({torrent: input.query, webtorrentOptions: input.webtorrentOptions, config: input.config});
-    return;
-  }
-
   const renderer = await createCliRenderer({
     exitOnCtrlC: false,
     clearOnShutdown: true,
@@ -92,6 +87,9 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     layout: getOpenTuiLayout(renderer.width)
   };
   let searchValue = state.query;
+  let streamSession: TorrentStreamSession | undefined;
+  let streamSnapshot: TorrentStreamSnapshot | undefined;
+  let lastStreamRequest: {torrent: string; title: string; output: string} | undefined;
 
   const app = new BoxRenderable(renderer, {
     id: 'shellflix-open-tui',
@@ -140,8 +138,16 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     fg: colors.text,
     bg: colors.panelBg
   });
+  const searchHint = new TextRenderable(renderer, {
+    id: 'shellflix-search-hint',
+    width: '100%',
+    height: 1,
+    content: buildSearchHintContent(),
+    fg: colors.muted
+  });
   searchPanel.add(searchLabel);
   searchPanel.add(searchInput);
+  searchPanel.add(searchHint);
 
   const resultsPanel = new BoxRenderable(renderer, {
     id: 'shellflix-results-panel',
@@ -240,6 +246,49 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     outputPanel.add(row);
   }
 
+  const streamPanel = new BoxRenderable(renderer, {
+    id: 'shellflix-stream-panel',
+    width: '100%',
+    height: 6,
+    borderStyle: 'single',
+    borderColor: colors.info,
+    paddingX: 1,
+    flexDirection: 'column'
+  });
+  const streamTitle = new TextRenderable(renderer, {
+    id: 'shellflix-stream-title',
+    content: '',
+    fg: colors.text,
+    width: '100%',
+    height: 1
+  });
+  const streamBody = new TextRenderable(renderer, {
+    id: 'shellflix-stream-body',
+    content: '',
+    fg: colors.secondary,
+    width: '100%',
+    height: 1
+  });
+  const streamControls = new TextRenderable(renderer, {
+    id: 'shellflix-stream-controls',
+    content: 'x stop · r restart · / search · Enter start selected',
+    fg: colors.muted,
+    width: '100%',
+    height: 1
+  });
+  const streamLog = new TextRenderable(renderer, {
+    id: 'shellflix-stream-log',
+    content: '',
+    fg: colors.muted,
+    width: '100%',
+    height: 2,
+    wrapMode: 'word'
+  });
+  streamPanel.add(streamTitle);
+  streamPanel.add(streamBody);
+  streamPanel.add(streamControls);
+  streamPanel.add(streamLog);
+
   const footer = new TextRenderable(renderer, {
     id: 'shellflix-footer',
     content: '',
@@ -253,6 +302,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
   app.add(resultsPanel);
   app.add(details);
   app.add(outputPanel);
+  app.add(streamPanel);
   app.add(footer);
   renderer.root.add(app);
 
@@ -262,6 +312,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     }
 
     didQuit = true;
+    streamSession?.stop();
     cleanupProcessListeners();
     process.exitCode = code;
     renderer.destroy();
@@ -313,10 +364,14 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
   function renderState(): void {
     const selected = state.results[state.selectedIndex];
 
-    title.content = buildOpenTuiTitle();
+    title.content = buildHeaderTitle(state.mode, Boolean(streamSession?.isActive()));
     meta.content = buildOpenTuiMeta(state);
     status.content = state.status;
-    status.fg = state.mode === 'error' ? colors.error : colors.info;
+    status.fg = state.mode === 'error'
+      ? colors.error
+      : state.mode === 'streaming'
+        ? colors.seeders
+        : colors.info;
 
     emptyResults.visible = state.results.length === 0;
     emptyResults.content = buildEmptyResultsText(state.mode, state.status);
@@ -325,7 +380,7 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
     resultRowsPanel.visible = state.results.length > 0;
     renderOutputMenu();
 
-    const visibleResultCount = getVisibleResultCount(renderer.height, state);
+    const visibleResultCount = getVisibleResultCount(renderer.height, state, Boolean(streamSnapshot));
     resultRowsPanel.height = visibleResultCount;
 
     const visibleStart = getVisibleResultStart(state.selectedIndex, state.results.length, visibleResultCount);
@@ -351,14 +406,24 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       row.line.content = buildResultRow(result, selectedRow, state.layout, locale);
     }
 
-    details.visible = state.layout === 'full' && Boolean(selected);
+    details.visible = state.layout === 'full' && Boolean(selected) && !streamSnapshot;
     detailsBody.content = selected
       ? `${selected.title}\nProvider ${selected.provider ?? 'unknown'} · Output ${state.output} · Subtitles ${state.subtitleEnabled ? 'on' : 'off'}`
       : '';
 
     searchPanel.visible = state.mode === 'search';
     searchInput.content = buildSearchInputContent(searchValue);
-    footer.content = buildFooterContent(state.mode, state.layout);
+    searchHint.visible = searchValue.trim().length === 0;
+    streamPanel.visible = Boolean(streamSnapshot);
+    streamPanel.borderColor = streamSnapshot?.status === 'failed' ? colors.error : colors.info;
+    streamTitle.content = streamSnapshot ? buildStreamTitle(streamSnapshot) : '';
+    streamTitle.fg = streamSnapshot?.status === 'failed' ? colors.error : streamSnapshot?.status === 'running' ? colors.seeders : colors.text;
+    streamBody.content = streamSnapshot ? buildStreamBody(streamSnapshot, lastStreamRequest, state.output) : '';
+    streamControls.content = state.mode === 'search'
+      ? 'Ctrl+X stop · Enter search · Esc quit'
+      : 'x stop · r restart · / search · Enter start selected';
+    streamLog.content = streamSnapshot ? buildStreamLog(streamSnapshot) : '';
+    footer.content = buildFooterContent(state.mode, state.layout, Boolean(streamSession?.isActive()));
 
     renderer.root.requestRender();
   }
@@ -401,9 +466,71 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       return;
     }
 
-    cleanupProcessListeners();
-    renderer.destroy();
-    process.exitCode = streamTorrent({torrent: magnet, webtorrentOptions: input.webtorrentOptions, config: activeConfig, output: state.output});
+    startStreamSession({
+      torrent: magnet,
+      title: torrent.title,
+      output: state.output
+    });
+  }
+
+  function startDirectStream(torrent: string): void {
+    startStreamSession({
+      torrent,
+      title: 'Direct torrent',
+      output: state.output
+    });
+  }
+
+  function startStreamSession(request: {torrent: string; title: string; output: string}): void {
+    streamSession?.stop();
+    lastStreamRequest = request;
+    streamSnapshot = undefined;
+    setState({
+      ...state,
+      mode: 'streaming',
+      status: `Starting WebTorrent for ${truncate(request.title, 42)}...`
+    });
+    streamSession = startTorrentStream({
+      torrent: request.torrent,
+      webtorrentOptions: input.webtorrentOptions,
+      config: activeConfig,
+      output: request.output
+    }, {
+      maxLogLines: 5,
+      onUpdate: snapshot => {
+        streamSnapshot = snapshot;
+
+        if (didQuit) {
+          return;
+        }
+
+        state = {
+          ...state,
+          mode: snapshot.status === 'failed' ? 'error' : 'streaming',
+          status: buildStreamStatus(snapshot, lastStreamRequest)
+        };
+        renderState();
+      }
+    });
+  }
+
+  function stopStream(): void {
+    if (!streamSession?.isActive()) {
+      setState({...state, status: 'No active stream to stop.'});
+      return;
+    }
+
+    streamSession.stop();
+    setState({...state, mode: 'streaming', status: 'Stopping WebTorrent...'});
+  }
+
+  function restartStream(): void {
+    if (!lastStreamRequest) {
+      setState({...state, status: 'No previous stream to restart.'});
+      return;
+    }
+
+    startStreamSession(lastStreamRequest);
   }
 
   function moveOutputSelection(direction: 1 | -1): void {
@@ -474,6 +601,11 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
       return;
     }
 
+    if (streamSession?.isActive() && (key.sequence === '\u0018' || (key.ctrl && key.name === 'x'))) {
+      stopStream();
+      return;
+    }
+
     if (state.mode === 'search') {
       handleSearchKey(key);
       return;
@@ -494,6 +626,21 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
         saveSelectedOutput();
       }
 
+      return;
+    }
+
+    if (key.sequence === 'x') {
+      stopStream();
+      return;
+    }
+
+    if (key.sequence === 'r') {
+      restartStream();
+      return;
+    }
+
+    if (key.sequence === 'q') {
+      quit(0);
       return;
     }
 
@@ -588,7 +735,9 @@ async function runOpenTuiShellflix(input: RunOpenTuiInput): Promise<void> {
 
   renderState();
 
-  if (input.query) {
+  if (input.query && isTorrentIdentifier(input.query)) {
+    startDirectStream(input.query);
+  } else if (input.query) {
     void runSearch(input.query);
   }
 }
@@ -625,6 +774,72 @@ function buildResultsLegend(layout: TuiState['layout']): StyledText {
     fg(colors.leechers)('L leechers'),
     fg(colors.muted)(layout === 'compact' ? '  Size' : '  Size  Age')
   ]);
+}
+
+function buildHeaderTitle(mode: TuiState['mode'], streamActive: boolean): StyledText {
+  const label = streamActive ? 'STREAM' : mode === 'search' ? 'SEARCH' : mode === 'output' ? 'OUTPUT' : mode === 'error' ? 'ATTENTION' : 'RESULTS';
+  const labelColor = streamActive ? colors.seeders : mode === 'error' ? colors.error : colors.info;
+
+  return new StyledText([
+    fg(colors.text)(buildOpenTuiTitle()),
+    fg(colors.muted)('  '),
+    fg(labelColor)(label)
+  ]);
+}
+
+function buildStreamTitle(snapshot: TorrentStreamSnapshot): StyledText {
+  const label = snapshot.status === 'running'
+    ? 'RUNNING'
+    : snapshot.status === 'failed'
+      ? 'ATTENTION'
+      : snapshot.status.toUpperCase();
+  const labelColor = snapshot.status === 'failed' ? colors.error : snapshot.status === 'running' ? colors.seeders : colors.info;
+
+  return new StyledText([
+    fg(colors.text)('Stream  '),
+    fg(labelColor)(label)
+  ]);
+}
+
+function buildStreamStatus(snapshot: TorrentStreamSnapshot, request: {title: string; output: string} | undefined): string {
+  const title = request ? truncate(request.title, 42) : 'WebTorrent';
+
+  if (snapshot.status === 'running') {
+    return `Streaming ${title}. WebTorrent is controlled from Shellflix.`;
+  }
+
+  if (snapshot.status === 'failed') {
+    return `WebTorrent stopped unexpectedly${snapshot.exitCode === undefined ? '' : ` (${snapshot.exitCode ?? snapshot.signal ?? 'signal'})`}.`;
+  }
+
+  if (snapshot.status === 'stopped') {
+    return `Stream stopped. Press r to restart ${title}.`;
+  }
+
+  return `Starting ${title}...`;
+}
+
+function buildStreamBody(snapshot: TorrentStreamSnapshot, request: {title: string; output: string} | undefined, output: string): string {
+  const context = [
+    request ? truncate(request.title, 54) : 'No active torrent',
+    `Output ${request?.output ?? output}`
+  ];
+
+  if (snapshot.pid) {
+    context.push(`PID ${snapshot.pid}`);
+  }
+
+  return context.join(' · ');
+}
+
+function buildStreamLog(snapshot: TorrentStreamSnapshot): string {
+  if (snapshot.log.length === 0) {
+    return snapshot.status === 'running'
+      ? 'Waiting for WebTorrent output...'
+      : 'No WebTorrent output yet.';
+  }
+
+  return snapshot.log.slice(-2).join('\n');
 }
 
 function buildResultRow(result: TorrentResult, selected: boolean, layout: TuiState['layout'], locale: string): StyledText {
@@ -683,18 +898,20 @@ function getOpenTuiLayout(width: number): TuiState['layout'] {
   return width < 110 ? 'compact' : 'full';
 }
 
-function getVisibleResultCount(terminalHeight: number, state: Pick<TuiState, 'layout' | 'mode' | 'results' | 'selectedIndex'>): number {
+function getVisibleResultCount(terminalHeight: number, state: Pick<TuiState, 'layout' | 'mode' | 'results' | 'selectedIndex'>, hasStreamPanel = false): number {
   const hasSelection = Boolean(state.results[state.selectedIndex]);
   const reservedRows =
     5 +
     2 +
     (state.mode === 'search' ? 4 : 0) +
     (state.mode === 'output' ? 8 : 0) +
+    (hasStreamPanel ? 7 : 0) +
     (state.layout === 'full' && hasSelection ? 5 : 0);
   const visibleSectionGaps =
     2 +
     (state.mode === 'search' ? 1 : 0) +
     (state.mode === 'output' ? 1 : 0) +
+    (hasStreamPanel ? 1 : 0) +
     (state.layout === 'full' && hasSelection ? 1 : 0);
   const resultPanelChrome = 4;
   const availableRows = terminalHeight - reservedRows - visibleSectionGaps - resultPanelChrome;

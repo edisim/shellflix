@@ -3,7 +3,7 @@ import {Box, Text} from 'ink';
 import {StatusMessage} from '@inkjs/ui';
 import {formatResultMetaColumns} from '../core/result-format.js';
 import {resolveSystemLocale} from '../core/system-locale.js';
-import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchInputContent} from '../core/tui-copy.js';
+import {buildEmptyResultsText, buildFooterContent, buildOpenTuiMeta, buildOpenTuiTitle, buildSearchHintContent, buildSearchInputContent} from '../core/tui-copy.js';
 import type {TuiState} from '../core/tui-state.js';
 import type {TorrentResult} from '../core/types.js';
 
@@ -27,6 +27,7 @@ export function ShellflixTui({state, locale = resolveSystemLocale()}: Props) {
         <Box borderStyle="single" borderColor="cyan" flexDirection="column" paddingX={1}>
           <Text color="gray">Search query</Text>
           <Text>{buildSearchInputContent(state.query)}</Text>
+          {state.query.trim() ? null : <Text color="gray">{buildSearchHintContent()}</Text>}
         </Box>
       ) : null}
 
